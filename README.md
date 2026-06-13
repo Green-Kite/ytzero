@@ -1,5 +1,7 @@
 # YouTube Zero
 
+![YouTube Zero Today view](docs/assets/youtube-zero-today.png)
+
 > A self-hosted YouTube subscriptions reader with no Google account, no API key, and no recommendation algorithm.
 
 YouTube Zero is a small web app for watching channels you already care about. It reads public YouTube RSS feeds, stores videos locally in SQLite, and gives you a quiet inbox for filtering, scheduling, watching, archiving, and organizing videos.
