@@ -20,6 +20,7 @@ YouTube Zero is a small web app for watching channels you already care about. It
 - [Quick Start](#quick-start)
 - [Scripts](#scripts)
 - [Importing Subscriptions](#importing-subscriptions)
+- [Child Lock and Kids](#child-lock-and-kids)
 - [Configuration](#configuration)
 - [Data, Backup, and Updates](#data-backup-and-updates)
 - [How It Works](#how-it-works)
@@ -62,6 +63,7 @@ And leaves out:
 - **Automatic tag rules** - apply tags by matching title or description text.
 - **Filter rules** - automatically reject matching videos, or keep only matching videos for selected channels.
 - **User playlists** - create local playlists, choose icons, add videos manually, and populate playlists with rules.
+- **Child lock** - protect settings with a 6-digit PIN so channel, filter, tag, playlist, and display configuration cannot be changed without unlocking.
 - **Channel pages** - browse regular videos, Shorts, public playlists, channel metadata, and channel-specific tags.
 - **Theather view** - distraction-light player layout for watching.
 - **Internationalization** - English and Polish UI, with saved user preference.
@@ -183,6 +185,12 @@ To export subscriptions from Google Takeout:
 3. Include subscriptions.
 4. Download the archive.
 5. Import `subscriptions.csv` in YouTube Zero settings.
+
+## Child Lock and Kids
+
+You can enable **Child lock** in **Settings -> Child** and set a 6-digit PIN. When it is enabled, settings changes are locked until the PIN is entered.
+
+This can be useful for children when you want YouTube access to be limited to selected channels only. You still need to manage the setup yourself: add only the channels you want available, keep filters and followed channels configured correctly, and make sure the app is the YouTube surface the child actually uses.
 
 ## Configuration
 

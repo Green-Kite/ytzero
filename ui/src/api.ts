@@ -111,6 +111,12 @@ export interface AppSettings {
   player_cc_lang: string;
   player_quality: string;
   grid_size: string;
+  child_lock_enabled: string;
+}
+
+export interface ChildLockStatus {
+  enabled: boolean;
+  locked: boolean;
 }
 
 export type Bucket = "today" | "tonight" | "tomorrow" | "weekend";
@@ -216,6 +222,19 @@ export const api = {
   settings: () => http<{ settings: AppSettings }>("/settings"),
   updateSettings: (s: Partial<AppSettings>) =>
     http("/settings", { method: "PUT", body: JSON.stringify(s) }),
+  childLock: () => http<{ child_lock: ChildLockStatus }>("/child-lock"),
+  enableChildLock: (pin: string) =>
+    http<{ child_lock: ChildLockStatus }>("/child-lock/enable", { method: "POST", body: JSON.stringify({ pin }) }),
+  unlockChildLock: (pin: string) =>
+    http<{ child_lock: ChildLockStatus }>("/child-lock/unlock", { method: "POST", body: JSON.stringify({ pin }) }),
+  lockChildLock: () => http<{ child_lock: ChildLockStatus }>("/child-lock/lock", { method: "POST" }),
+  changeChildLockPin: (newPin: string, currentPin?: string) =>
+    http<{ child_lock: ChildLockStatus }>("/child-lock/change-pin", {
+      method: "POST",
+      body: JSON.stringify({ new_pin: newPin, current_pin: currentPin }),
+    }),
+  disableChildLock: (pin?: string) =>
+    http<{ child_lock: ChildLockStatus }>("/child-lock/disable", { method: "POST", body: JSON.stringify({ pin }) }),
 
   followChannel: (id: string, followed: boolean) =>
     http(`/channels/${id}/follow`, { method: "PUT", body: JSON.stringify({ followed }) }),

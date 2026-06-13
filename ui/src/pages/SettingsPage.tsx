@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Check, FolderUp, LoaderCircle, ListMusic, MonitorPlay, Pencil, Plus, Tags, Trash2, Tv, UserMinus, UserPlus, X, Zap } from "lucide-react";
-import { api, type Channel, type FilterRule, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule } from "../api";
+import { Check, FolderUp, LoaderCircle, ListMusic, MonitorPlay, Pencil, Plus, ShieldCheck, Tags, Trash2, Tv, UserMinus, UserPlus, X, Zap } from "lucide-react";
+import { api, type Channel, type ChildLockStatus, type FilterRule, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule } from "../api";
 import TagChip from "../components/TagChip";
 import { PlaylistIconPicker } from "../components/PlaylistIcon";
 import { TableSkeleton } from "../components/LoadingState";
@@ -9,13 +9,14 @@ import Popconfirm from "../components/Popconfirm";
 import { emit } from "../events";
 import { formatVideoCount, useI18n, type I18nKey, type Language } from "../i18n";
 
-type Tab = "channels" | "tags" | "playlists" | "display";
+type Tab = "channels" | "tags" | "playlists" | "display" | "child";
 
 const TABS: { id: Tab; labelKey: I18nKey; icon: React.ReactNode }[] = [
   { id: "channels", labelKey: "channels", icon: <Tv size={15} /> },
   { id: "tags", labelKey: "tagsRules", icon: <Tags size={15} /> },
   { id: "playlists", labelKey: "playlists", icon: <ListMusic size={15} /> },
   { id: "display", labelKey: "display", icon: <MonitorPlay size={15} /> },
+  { id: "child", labelKey: "child", icon: <ShieldCheck size={15} /> },
 ];
 
 function PlaylistSettingsItem({
@@ -373,6 +374,12 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [playerHl, setPlayerHl] = useState("pl");
   const [playerCc, setPlayerCc] = useState(false);
   const [playerQuality, setPlayerQuality] = useState("auto");
+  const [childLock, setChildLock] = useState<ChildLockStatus>({ enabled: false, locked: false });
+  const [unlockPin, setUnlockPin] = useState("");
+  const [enablePin, setEnablePin] = useState("");
+  const [enablePinConfirm, setEnablePinConfirm] = useState("");
+  const [newPin, setNewPin] = useState("");
+  const [newPinConfirm, setNewPinConfirm] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const tagMenuRef = useRef<HTMLDivElement>(null);
   const [tagMenuChannelId, setTagMenuChannelId] = useState<string | null>(null);
@@ -397,13 +404,13 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
 
   useEffect(() => {
     load().catch(console.error);
-    api
-      .settings()
-      .then((r) => {
+    Promise.all([api.settings(), api.childLock()])
+      .then(([r, cl]) => {
         setShowShorts(r.settings.show_shorts === "1");
         setPlayerHl(r.settings.player_hl);
         setPlayerCc(r.settings.player_cc === "1");
         setPlayerQuality(r.settings.player_quality);
+        setChildLock(cl.child_lock);
       })
       .catch(console.error);
   }, [load]);
@@ -427,6 +434,57 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const savePlayer = async (patch: Record<string, string>) => {
     await api.updateSettings(patch);
     showToast(t("playerSettingsSaved"));
+  };
+
+  const showPinError = () => showToast(t("pinMustBeSixDigits"));
+  const isValidPin = (pin: string) => /^\d{6}$/.test(pin);
+
+  const unlockSettings = async () => {
+    if (!isValidPin(unlockPin)) return showPinError();
+    try {
+      const r = await api.unlockChildLock(unlockPin);
+      setChildLock(r.child_lock);
+      setUnlockPin("");
+      showToast(t("settingsUnlocked"));
+    } catch {
+      showToast(t("pinInvalid"));
+    }
+  };
+
+  const enableChildLock = async () => {
+    if (!isValidPin(enablePin) || enablePin !== enablePinConfirm) {
+      showToast(enablePin !== enablePinConfirm ? t("pinsDoNotMatch") : t("pinMustBeSixDigits"));
+      return;
+    }
+    const r = await api.enableChildLock(enablePin);
+    setChildLock(r.child_lock);
+    setEnablePin("");
+    setEnablePinConfirm("");
+    showToast(t("childLockEnabled"));
+  };
+
+  const changeChildPin = async () => {
+    if (!isValidPin(newPin) || newPin !== newPinConfirm) {
+      showToast(newPin !== newPinConfirm ? t("pinsDoNotMatch") : t("pinMustBeSixDigits"));
+      return;
+    }
+    const r = await api.changeChildLockPin(newPin);
+    setChildLock(r.child_lock);
+    setNewPin("");
+    setNewPinConfirm("");
+    showToast(t("childLockPinChanged"));
+  };
+
+  const disableChildLock = async () => {
+    const r = await api.disableChildLock();
+    setChildLock(r.child_lock);
+    showToast(t("childLockDisabled"));
+  };
+
+  const lockSettings = async () => {
+    const r = await api.lockChildLock();
+    setChildLock(r.child_lock);
+    showToast(t("settingsLocked"));
   };
 
   const addChannel = async () => {
@@ -524,6 +582,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         return title.includes(normalizedChannelQuery) || channelId.includes(normalizedChannelQuery);
       })
     : channels;
+  const isSettingsLocked = childLock.enabled && childLock.locked;
 
   return (
     <>
@@ -545,7 +604,34 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         ))}
       </div>
 
-      {tab === "channels" && (
+      {isSettingsLocked && (
+        <section className="settings-section child-lock-panel">
+          <div className="child-lock-header">
+            <ShieldCheck />
+            <div>
+              <div className="switch-label">{t("settingsLockedTitle")}</div>
+              <div className="child-lock-description">{t("settingsLockedHint")}</div>
+            </div>
+          </div>
+          <div className="form-row">
+            <input
+              type="password"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={6}
+              placeholder={t("pinPlaceholder")}
+              value={unlockPin}
+              onChange={(e) => setUnlockPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              onKeyDown={(e) => e.key === "Enter" && unlockSettings()}
+            />
+            <button className="btn primary" onClick={unlockSettings} disabled={unlockPin.length !== 6}>
+              <ShieldCheck /> {t("unlockSettings")}
+            </button>
+          </div>
+        </section>
+      )}
+
+      {!isSettingsLocked && tab === "channels" && (
         <section className="settings-section">
           <div className="settings-subtabs">
             <button className={`settings-subtab${channelSubTab === "list" ? " active" : ""}`} onClick={() => setChannelSubTab("list")}>
@@ -779,7 +865,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         </section>
       )}
 
-      {tab === "tags" && (
+      {!isSettingsLocked && tab === "tags" && (
         <section className="settings-section">
           <div className="settings-subtabs">
             <button className={`settings-subtab${tagSubTab === "list" ? " active" : ""}`} onClick={() => setTagSubTab("list")}>
@@ -872,7 +958,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         </section>
       )}
 
-      {tab === "playlists" && (
+      {!isSettingsLocked && tab === "playlists" && (
         <section className="settings-section">
           <p className="hint">
             {t("playlistHint")}
@@ -908,7 +994,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         </section>
       )}
 
-      {tab === "display" && (
+      {!isSettingsLocked && tab === "display" && (
         <section className="settings-section">
           <div className="switch-row">
             <div>
@@ -1002,6 +1088,81 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
           <p className="hint" style={{ marginTop: 4 }}>
             {t("qualityHint")}
           </p>
+        </section>
+      )}
+
+      {!isSettingsLocked && tab === "child" && (
+        <section className="settings-section child-lock-panel">
+          <div className="child-lock-header">
+            <ShieldCheck />
+            <div>
+              <div className="switch-label">{t("childLock")}</div>
+              <div className="child-lock-description">{t("childLockHint")}</div>
+            </div>
+          </div>
+
+          {!childLock.enabled ? (
+            <>
+              <p className="hint">{t("childLockEnableHint")}</p>
+              <div className="form-row">
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  placeholder={t("newPinPlaceholder")}
+                  value={enablePin}
+                  onChange={(e) => setEnablePin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                />
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  placeholder={t("confirmPinPlaceholder")}
+                  value={enablePinConfirm}
+                  onChange={(e) => setEnablePinConfirm(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  onKeyDown={(e) => e.key === "Enter" && enableChildLock()}
+                />
+                <button className="btn primary" onClick={enableChildLock} disabled={enablePin.length !== 6 || enablePinConfirm.length !== 6}>
+                  <ShieldCheck /> {t("enableChildLock")}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="child-lock-status">
+                <span className="tag-pill">{t("childLockEnabledStatus")}</span>
+                <button className="btn" onClick={lockSettings}>{t("lockNow")}</button>
+                <button className="btn danger" onClick={disableChildLock}>{t("disableChildLock")}</button>
+              </div>
+              <p className="hint">{t("changePinHint")}</p>
+              <div className="form-row">
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  placeholder={t("newPinPlaceholder")}
+                  value={newPin}
+                  onChange={(e) => setNewPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                />
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  placeholder={t("confirmPinPlaceholder")}
+                  value={newPinConfirm}
+                  onChange={(e) => setNewPinConfirm(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  onKeyDown={(e) => e.key === "Enter" && changeChildPin()}
+                />
+                <button className="btn primary" onClick={changeChildPin} disabled={newPin.length !== 6 || newPinConfirm.length !== 6}>
+                  {t("changePin")}
+                </button>
+              </div>
+            </>
+          )}
         </section>
       )}
     </>

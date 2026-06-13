@@ -19,6 +19,93 @@ export const api = new Hono();
 
 // ---------- helpers ----------
 
+const CHILD_LOCK_SESSION_COOKIE = "ytzero_child_lock";
+const CHILD_LOCK_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+const childLockSessions = new Map<string, number>();
+
+function parseCookies(header: string | undefined) {
+  const cookies: Record<string, string> = {};
+  for (const part of (header ?? "").split(";")) {
+    const [rawKey, ...rawValue] = part.trim().split("=");
+    if (!rawKey) continue;
+    cookies[rawKey] = decodeURIComponent(rawValue.join("="));
+  }
+  return cookies;
+}
+
+function isSixDigitPin(pin: unknown): pin is string {
+  return typeof pin === "string" && /^\d{6}$/.test(pin);
+}
+
+function isChildLockEnabled() {
+  return getSetting("child_lock_enabled") === "1" && Boolean(getSetting("child_lock_pin_hash"));
+}
+
+function cleanupChildLockSessions() {
+  const now = Date.now();
+  for (const [token, expiresAt] of childLockSessions) {
+    if (expiresAt <= now) childLockSessions.delete(token);
+  }
+}
+
+function hasChildLockSession(c: any) {
+  if (!isChildLockEnabled()) return true;
+  cleanupChildLockSessions();
+  const token = parseCookies(c.req.header("cookie"))[CHILD_LOCK_SESSION_COOKIE];
+  return Boolean(token && (childLockSessions.get(token) ?? 0) > Date.now());
+}
+
+function childLockStatus(c: any) {
+  const enabled = isChildLockEnabled();
+  return { enabled, locked: enabled && !hasChildLockSession(c) };
+}
+
+async function verifyChildLockPin(pin: string) {
+  const hash = getSetting("child_lock_pin_hash");
+  if (!hash) return false;
+  return Bun.password.verify(pin, hash);
+}
+
+async function hashChildLockPin(pin: string) {
+  return Bun.password.hash(pin);
+}
+
+function setChildLockSession(c: any) {
+  const token = crypto.randomUUID();
+  const expiresAt = Date.now() + CHILD_LOCK_SESSION_TTL_MS;
+  childLockSessions.set(token, expiresAt);
+  c.header(
+    "Set-Cookie",
+    `${CHILD_LOCK_SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; Max-Age=${Math.floor(CHILD_LOCK_SESSION_TTL_MS / 1000)}; SameSite=Lax; HttpOnly`
+  );
+}
+
+function clearChildLockSession(c: any) {
+  const token = parseCookies(c.req.header("cookie"))[CHILD_LOCK_SESSION_COOKIE];
+  if (token) childLockSessions.delete(token);
+  c.header("Set-Cookie", `${CHILD_LOCK_SESSION_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax; HttpOnly`);
+}
+
+const SETTINGS_MUTATION_PREFIXES = [
+  "/settings",
+  "/channels",
+  "/tags",
+  "/rules",
+  "/filter-rules",
+  "/playlists",
+];
+
+api.use("*", async (c, next) => {
+  const path = new URL(c.req.url).pathname.replace(/^\/api/, "");
+  const method = c.req.method.toUpperCase();
+  const isMutation = !["GET", "HEAD", "OPTIONS"].includes(method);
+  const isProtected = SETTINGS_MUTATION_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+  if (isMutation && isProtected && !path.startsWith("/child-lock") && !hasChildLockSession(c)) {
+    return c.json({ error: "settings locked" }, 423);
+  }
+  await next();
+});
+
 interface VideoRow {
   video_id: string;
   channel_id: string;
@@ -706,9 +793,61 @@ api.get("/img", async (c) => {
 
 // ---------- settings ----------
 
+api.get("/child-lock", (c) => {
+  return c.json({ child_lock: childLockStatus(c) });
+});
+
+api.post("/child-lock/enable", async (c) => {
+  if (isChildLockEnabled()) return c.json({ error: "child lock already enabled" }, 409);
+  const body = await c.req.json().catch(() => ({}));
+  if (!isSixDigitPin(body.pin)) return c.json({ error: "PIN must have 6 digits" }, 400);
+  setSetting("child_lock_pin_hash", await hashChildLockPin(body.pin));
+  setSetting("child_lock_enabled", "1");
+  setChildLockSession(c);
+  return c.json({ child_lock: { enabled: true, locked: false } });
+});
+
+api.post("/child-lock/unlock", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  if (!isChildLockEnabled()) return c.json({ child_lock: childLockStatus(c) });
+  if (!isSixDigitPin(body.pin) || !(await verifyChildLockPin(body.pin))) {
+    return c.json({ error: "invalid PIN" }, 401);
+  }
+  setChildLockSession(c);
+  return c.json({ child_lock: { enabled: true, locked: false } });
+});
+
+api.post("/child-lock/lock", (c) => {
+  clearChildLockSession(c);
+  return c.json({ child_lock: childLockStatus(c) });
+});
+
+api.post("/child-lock/change-pin", async (c) => {
+  if (!isChildLockEnabled()) return c.json({ error: "child lock is disabled" }, 400);
+  const body = await c.req.json().catch(() => ({}));
+  const canChange = hasChildLockSession(c) || (isSixDigitPin(body.current_pin) && (await verifyChildLockPin(body.current_pin)));
+  if (!canChange) return c.json({ error: "invalid PIN" }, 401);
+  if (!isSixDigitPin(body.new_pin)) return c.json({ error: "PIN must have 6 digits" }, 400);
+  setSetting("child_lock_pin_hash", await hashChildLockPin(body.new_pin));
+  setChildLockSession(c);
+  return c.json({ child_lock: { enabled: true, locked: false } });
+});
+
+api.post("/child-lock/disable", async (c) => {
+  if (!isChildLockEnabled()) return c.json({ child_lock: childLockStatus(c) });
+  const body = await c.req.json().catch(() => ({}));
+  const canDisable = hasChildLockSession(c) || (isSixDigitPin(body.pin) && (await verifyChildLockPin(body.pin)));
+  if (!canDisable) return c.json({ error: "invalid PIN" }, 401);
+  setSetting("child_lock_enabled", "0");
+  setSetting("child_lock_pin_hash", "");
+  clearChildLockSession(c);
+  return c.json({ child_lock: childLockStatus(c) });
+});
+
 api.get("/settings", (c) => {
   const settings: Record<string, string> = {};
   for (const key of Object.keys(SETTING_DEFAULTS)) {
+    if (key === "child_lock_pin_hash") continue;
     settings[key] = getSetting(key) ?? SETTING_DEFAULTS[key];
   }
   return c.json({ settings });
@@ -717,6 +856,7 @@ api.get("/settings", (c) => {
 api.put("/settings", async (c) => {
   const body = await c.req.json();
   for (const key of Object.keys(SETTING_DEFAULTS)) {
+    if (key === "child_lock_pin_hash" || key === "child_lock_enabled") continue;
     if (key in body) setSetting(key, String(body[key]));
   }
   return c.json({ ok: true });

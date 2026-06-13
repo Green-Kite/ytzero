@@ -139,6 +139,8 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   player_cc_lang: "en",
   player_quality: "auto",
   grid_size: "sm",
+  child_lock_enabled: "0",
+  child_lock_pin_hash: "",
 };
 for (const [key, value] of Object.entries(SETTING_DEFAULTS)) {
   db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)").run(key, value);
