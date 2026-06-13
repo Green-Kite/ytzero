@@ -1,0 +1,13 @@
+services:
+  ytzero:
+    build: .
+    container_name: ytzero
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./data:/data
+    environment:
+      - REFRESH_INTERVAL_MINUTES=15
+      - DB_PATH=/data/db/ytzero.db
+      - IMG_CACHE_DIR=/data/imgcache
+    restart: unless-stopped

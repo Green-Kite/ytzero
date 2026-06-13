@@ -1,0 +1,13 @@
+{
+  "name": "ytzero",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "setup": "bash ./scripts/setup.sh",
+    "dev": "bash ./scripts/dev.sh",
+    "dev:app": "cd app && bun run dev",
+    "dev:ui": "cd ui && bun run dev",
+    "build": "bash ./scripts/build.sh",
+    "start": "bash ./scripts/start.sh"
+  }
+}

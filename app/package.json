@@ -1,0 +1,18 @@
+{
+  "name": "ytzero-app",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^4.5.0",
+    "hono": "^4.6.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.10"
+  }
+}
