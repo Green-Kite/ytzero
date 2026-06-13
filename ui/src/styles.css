@@ -2285,8 +2285,10 @@ body.cinema .watch-layout.theater aside {
   .sidebar { width: 68px; }
   .sidebar .nav-label, .sidebar .badge { display: none; }
   .sidebar .sidebar-subs-header,
+  .sidebar .sidebar-section-title,
   .sidebar .sidebar-sub-name,
-  .sidebar .sidebar-sub-thumb { display: none; }
+  .sidebar .sidebar-sub-thumb,
+  .sidebar .sidebar-playlist-count { display: none; }
   .sidebar .sidebar-subs { margin-top: 6px; padding-top: 6px; }
   .sidebar .sidebar-sub-item { justify-content: center; padding: 7px 0; }
   .nav-link { justify-content: center; }
