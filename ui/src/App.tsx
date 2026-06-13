@@ -245,6 +245,7 @@ export default function App() {
   useEffect(loadSettings, [loadSettings]);
   useEffect(() => subscribe("shorts-tab-changed", loadSettings), [loadSettings]);
   useEffect(() => subscribe("app-name-changed", loadSettings), [loadSettings]);
+  useEffect(() => { document.title = appName; }, [appName]);
 
   useEffect(() => {
     const load = () =>

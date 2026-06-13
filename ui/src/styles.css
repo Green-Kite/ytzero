@@ -12,6 +12,10 @@
   --chip-hover: #3f3f3f;
   --radius: 12px;
   --topbar-h: 58px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
 }
 
 * { box-sizing: border-box; }
@@ -33,20 +37,20 @@ input, select { font: inherit; }
 ::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 
-.layout { display: flex; flex-direction: column; min-height: 100vh; }
+.layout { display: flex; flex-direction: column; min-height: 100dvh; }
 .layout-body { display: flex; flex: 1; }
 
 /* ---------- sidebar ---------- */
 .sidebar {
   width: 260px;
   flex-shrink: 0;
-  padding: 10px 10px 20px;
+  padding: 10px 10px calc(20px + var(--safe-bottom)) calc(10px + var(--safe-left));
   display: flex;
   flex-direction: column;
   gap: 2px;
   position: sticky;
-  top: var(--topbar-h);
-  height: calc(100vh - var(--topbar-h));
+  top: calc(var(--topbar-h) + var(--safe-top));
+  height: calc(100dvh - var(--topbar-h) - var(--safe-top));
   overflow-y: auto;
   overflow-x: hidden;
   transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1),
@@ -267,7 +271,7 @@ body.sidebar-hidden .sidebar { width: 0; padding: 0; }
 
 /* ---------- main & topbar ---------- */
 .main { flex: 1; min-width: 0; }
-.content { padding: 18px 32px 80px; }
+.content { padding: 18px calc(32px + var(--safe-right)) calc(80px + var(--safe-bottom)) calc(32px + var(--safe-left)); }
 .page-title { font-size: 19px; font-weight: 700; margin: 4px 0 20px; letter-spacing: -0.2px; }
 .section-title { font-size: 13px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 14px; }
 .section-divider { border: none; border-top: 1px solid var(--surface-3); margin: 28px 0 20px; }
@@ -276,11 +280,11 @@ body.sidebar-hidden .sidebar { width: 0; padding: 0; }
   position: sticky;
   top: 0;
   z-index: 50;
-  height: var(--topbar-h);
+  height: calc(var(--topbar-h) + var(--safe-top));
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 20px;
+  padding: var(--safe-top) calc(20px + var(--safe-right)) 0 calc(20px + var(--safe-left));
   background: rgba(15, 15, 15, 0.88);
   backdrop-filter: blur(10px);
   flex-shrink: 0;
@@ -2099,8 +2103,8 @@ body.cinema .watch-layout.theater aside {
 }
 .sp-close {
   position: absolute;
-  top: 14px;
-  right: 16px;
+  top: calc(14px + var(--safe-top));
+  right: calc(16px + var(--safe-right));
   z-index: 20;
   background: rgba(0,0,0,0.55);
   border: none;
@@ -2118,8 +2122,8 @@ body.cinema .watch-layout.theater aside {
 
 .sp-like {
   position: absolute;
-  top: 62px;
-  right: 16px;
+  top: calc(62px + var(--safe-top));
+  right: calc(16px + var(--safe-right));
   z-index: 20;
   background: rgba(0,0,0,0.55);
   border: none;
@@ -2160,7 +2164,7 @@ body.cinema .watch-layout.theater aside {
   bottom: 0;
   left: 0;
   right: 0;
-  padding: 60px 16px 24px;
+  padding: 60px calc(16px + var(--safe-right)) calc(24px + var(--safe-bottom)) calc(16px + var(--safe-left));
   background: linear-gradient(transparent, rgba(0,0,0,0.78));
   pointer-events: none;
   z-index: 5;
@@ -2201,7 +2205,7 @@ body.cinema .watch-layout.theater aside {
 /* Navigation buttons — fixed to right side */
 .sp-nav {
   position: absolute;
-  right: 16px;
+  right: calc(16px + var(--safe-right));
   top: 50%;
   transform: translateY(-50%);
   display: flex;
@@ -2229,8 +2233,8 @@ body.cinema .watch-layout.theater aside {
 /* Video counter (bottom-right) */
 .sp-counter {
   position: absolute;
-  bottom: 18px;
-  right: 20px;
+  bottom: calc(18px + var(--safe-bottom));
+  right: calc(20px + var(--safe-right));
   z-index: 20;
   font-size: 12px;
   color: rgba(255,255,255,0.5);
@@ -2287,5 +2291,5 @@ body.cinema .watch-layout.theater aside {
   .sidebar .sidebar-sub-item { justify-content: center; padding: 7px 0; }
   .nav-link { justify-content: center; }
   .topbar-logo .logo-text { display: none; }
-  .content { padding: 14px 14px 60px; }
+  .content { padding: 14px calc(14px + var(--safe-right)) calc(60px + var(--safe-bottom)) calc(14px + var(--safe-left)); }
 }
