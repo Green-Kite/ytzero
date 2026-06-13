@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Check, FolderUp, ListMusic, MonitorPlay, Pencil, Plus, Tags, Trash2, Tv, UserMinus, UserPlus, X, Zap } from "lucide-react";
+import { Check, FolderUp, LoaderCircle, ListMusic, MonitorPlay, Pencil, Plus, Tags, Trash2, Tv, UserMinus, UserPlus, X, Zap } from "lucide-react";
 import { api, type Channel, type FilterRule, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule } from "../api";
 import TagChip from "../components/TagChip";
 import { PlaylistIconPicker } from "../components/PlaylistIcon";
@@ -352,6 +352,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [playlists, setPlaylists] = useState<UserPlaylist[]>([]);
   const [playlistRules, setPlaylistRules] = useState<Record<number, UserPlaylistRule[]>>({});
   const [loading, setLoading] = useState(true);
+  const [addingChannel, setAddingChannel] = useState(false);
 
   const [channelUrl, setChannelUrl] = useState("");
   const [channelQuery, setChannelQuery] = useState("");
@@ -429,14 +430,18 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   };
 
   const addChannel = async () => {
-    if (!channelUrl.trim()) return;
+    if (!channelUrl.trim() || addingChannel) return;
+    setAddingChannel(true);
     try {
       const r = await api.addChannel(channelUrl.trim());
       showToast(language === "pl" ? `Dodano kanał: ${r.title || r.channel_id}` : `Added channel: ${r.title || r.channel_id}`);
       setChannelUrl("");
-      load();
+      await load();
     } catch (e) {
-      showToast(`${language === "pl" ? "Błąd" : "Error"}: ${e instanceof Error ? e.message : e}`);
+      const message = e instanceof Error ? e.message : String(e);
+      showToast(message === "HTTP 500" ? t("addChannelNotFoundError") : `${language === "pl" ? "Błąd" : "Error"}: ${message}`);
+    } finally {
+      setAddingChannel(false);
     }
   };
 
@@ -564,13 +569,15 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                   style={{ flex: 1, minWidth: 240 }}
                   placeholder={t("channelLinkPlaceholder")}
                   value={channelUrl}
+                  disabled={addingChannel}
                   onChange={(e) => setChannelUrl(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && addChannel()}
                 />
-                <button className="btn primary" onClick={addChannel}>
-                  <Plus /> {t("addChannel")}
+                <button className="btn primary" onClick={addChannel} disabled={addingChannel || !channelUrl.trim()}>
+                  {addingChannel ? <LoaderCircle className="spin" /> : <Plus />}
+                  {addingChannel ? t("addingChannel") : t("addChannel")}
                 </button>
-                <button className="btn" onClick={() => fileRef.current?.click()}>
+                <button className="btn" onClick={() => fileRef.current?.click()} disabled={addingChannel}>
                   <FolderUp /> {t("importOpmlCsv")}
                 </button>
                 <input
