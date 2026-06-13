@@ -9,7 +9,8 @@ import {
   Undo2,
 } from "lucide-react";
 import type { CSSProperties, MouseEvent, PointerEvent } from "react";
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { Link } from "react-router-dom";
 import { useDrag } from "@use-gesture/react";
 import { api, type Bucket, type Video } from "../api";
@@ -48,6 +49,16 @@ export const BUCKET_ICONS: Record<Bucket, typeof CalendarDays> = {
 
 const BUCKET_ORDER: Bucket[] = ["today", "tonight", "tomorrow", "weekend"];
 const SWIPE_THRESHOLD = 90;
+const SWIPE_EXIT_GUTTER = 24;
+const SWIPE_MAX_DRAG = 160;
+
+type ViewTransitionDocument = Document & {
+  startViewTransition?: (callback: () => void) => unknown;
+};
+
+function viewTransitionIdent(value: string) {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
 
 export default function VideoCard({
   video,
@@ -65,17 +76,37 @@ export default function VideoCard({
   onRemoveFromPlaylist?: (videoId: string) => Promise<unknown>;
 }) {
   const { t, bucketLabel, language } = useI18n();
+  const instanceId = useId();
   const [fading, setFading] = useState(false);
+  const [removed, setRemoved] = useState(false);
   const [actionProximity, setActionProximity] = useState(0);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [swipeX, setSwipeX] = useState(0);
   const [swiping, setSwiping] = useState(false);
   const [committedDir, setCommittedDir] = useState<"left" | "right" | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const lastProximityRef = useRef(0);
   const blockNextThumbClickRef = useRef(false);
+  const viewTransitionName = `video-card-${viewTransitionIdent(video.video_id)}-${viewTransitionIdent(instanceId)}`;
+
+  const removeWithLayoutAnimation = () => {
+    const doc = document as ViewTransitionDocument;
+    if (doc.startViewTransition) {
+      const t = doc.startViewTransition(() => {
+        flushSync(() => setRemoved(true));
+      }) as { finished?: Promise<void> };
+      t.finished?.then(onChanged) ?? onChanged();
+    } else {
+      setRemoved(true);
+      onChanged();
+    }
+  };
 
   const fade = (fn: () => Promise<unknown>) => {
-    fn().then(() => { setFading(true); setTimeout(onChanged, 520); });
+    fn().then(() => {
+      setFading(true);
+      setTimeout(removeWithLayoutAnimation, 280);
+    });
   };
 
   const act = (e: MouseEvent, fn: () => Promise<unknown>) => {
@@ -95,7 +126,7 @@ export default function VideoCard({
 
       if (active) {
         setSwiping(true);
-        const clamped = Math.sign(mx) * Math.min(Math.abs(mx), 160);
+        const clamped = Math.sign(mx) * Math.min(Math.abs(mx), SWIPE_MAX_DRAG);
         setSwipeX(clamped);
         // trigger early when well past threshold
         if (Math.abs(mx) > SWIPE_THRESHOLD * 1.8) {
@@ -120,13 +151,18 @@ export default function VideoCard({
   const commitSwipe = (mx: number) => {
     if (Math.abs(mx) >= SWIPE_THRESHOLD) {
       const dir = mx < 0 ? "left" : "right";
+      const cardWidth = cardRef.current?.getBoundingClientRect().width ?? SWIPE_MAX_DRAG;
+      const exitX = (dir === "left" ? -1 : 1) * (cardWidth + SWIPE_EXIT_GUTTER);
+      setSwiping(false);
       setCommittedDir(dir);
-      setSwipeX(0);
+      setSwipeX(exitX);
       setFading(true);
       const action = dir === "left"
         ? api.archiveVideo(video.video_id)
         : api.watch(video.video_id).then(() => api.archiveVideo(video.video_id));
-      action.then(() => { setTimeout(onChanged, 620); });
+      action.then(() => {
+        setTimeout(removeWithLayoutAnimation, 620);
+      });
     } else {
       setCommittedDir(null);
       setSwipeX(0);
@@ -193,11 +229,13 @@ export default function VideoCard({
       ? "opacity 0.56s ease, transform 0.56s cubic-bezier(0.22, 1, 0.36, 1)"
       : "transform 0.5s cubic-bezier(0.34, 1.4, 0.64, 1)";
 
-  const cardTilt = swiping ? `rotateZ(${Math.sign(swipeX) * Math.min(1.2, absX / 120)}deg)` : "";
+  const cardTilt = swiping || fading ? `rotateZ(${Math.sign(swipeX) * Math.min(1.2, absX / 120)}deg)` : "";
   const cardFadeScale = fading ? "scale(0.97)" : "";
 
+  if (removed) return null;
+
   return (
-    <div className={`swipe-wrap${fading ? " card-fading" : ""}`}>
+    <div className={`swipe-wrap${fading ? " card-fading" : ""}`} style={{ viewTransitionName } as CSSProperties}>
       {activeSwipeDir === "right" && (
         <div className="swipe-reveal swipe-reveal--left" style={{ width: revealWidth, opacity: fading ? undefined : contentOpacity }}>
           <span className="swipe-reveal-icon">
@@ -216,6 +254,7 @@ export default function VideoCard({
       )}
 
       <div
+        ref={cardRef}
         {...bind()}
         className="video-card"
         style={{

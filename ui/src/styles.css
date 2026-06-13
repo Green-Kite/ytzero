@@ -587,6 +587,7 @@ body.sidebar-hidden .sidebar { width: 0; padding: 0; }
   border-radius: var(--radius);
   touch-action: pan-y;
   isolation: isolate;
+  overflow: hidden;
 }
 .swipe-reveal {
   position: absolute;
@@ -877,26 +878,29 @@ body.sidebar-hidden .sidebar { width: 0; padding: 0; }
   letter-spacing: 0.2px;
 }
 
-/* card fading + smooth grid reflow */
-.swipe-wrap {
-  transition: max-height 0.38s ease 0.22s, margin 0.38s ease 0.22s;
-  max-height: 1200px;
-}
-.swipe-wrap.card-fading {
-  max-height: 0;
-  overflow: hidden;
-  margin-bottom: 0 !important;
-}
+/* card fading — only visual fade; layout shift is handled by View Transition */
 .video-card {
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition: opacity 0.26s ease, transform 0.26s ease;
 }
 .swipe-wrap.card-fading .video-card {
   opacity: 0;
-  transform: scale(0.97);
+  transform: scale(0.96);
   pointer-events: none;
 }
 .swipe-wrap.card-fading .swipe-reveal {
   opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+::view-transition-group(*) {
+  animation-duration: 0.38s;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+::view-transition-old(*) {
+  animation: none;
+}
+::view-transition-new(*) {
+  animation: none;
 }
 
 /* avatar size scales with grid */
