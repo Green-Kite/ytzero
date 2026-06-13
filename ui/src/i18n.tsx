@@ -181,6 +181,7 @@ const labels = {
     appNameLabel: "App name",
     appNamePlaceholder: "YT Zero",
     appNameSaved: "App name saved",
+    shortWatched: "Watched",
   },
   pl: {
     navToday: "Główna",
@@ -356,6 +357,7 @@ const labels = {
     appNameLabel: "Nazwa aplikacji",
     appNamePlaceholder: "YT Zero",
     appNameSaved: "Nazwa aplikacji zapisana",
+    shortWatched: "Odtworzony",
   },
 } as const;
 

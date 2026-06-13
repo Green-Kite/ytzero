@@ -285,7 +285,7 @@ export default function App() {
           <div className="content">
             <Routes>
               <Route path="/" element={<FeedPage onPlay={play} showToast={showToast} />} />
-              <Route path="/shorts" element={<ShortsPage onPlay={play} />} />
+              <Route path="/shorts" element={<ShortsPage />} />
               <Route path="/live" element={<LivePage onPlay={play} />} />
               <Route path="/watch/:id" element={<WatchPage />} />
               <Route path="/channel/:id" element={<ChannelPage onPlay={play} />} />

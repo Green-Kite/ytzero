@@ -67,6 +67,7 @@ export default function VideoCard({
   showRestore,
   showChannelAvatar = true,
   onRemoveFromPlaylist,
+  isWatched,
 }: {
   video: Video;
   onPlay: (v: Video) => void;
@@ -74,6 +75,7 @@ export default function VideoCard({
   showRestore?: boolean;
   showChannelAvatar?: boolean;
   onRemoveFromPlaylist?: (videoId: string) => Promise<unknown>;
+  isWatched?: boolean;
 }) {
   const { t, bucketLabel, language } = useI18n();
   const instanceId = useId();
@@ -275,6 +277,11 @@ export default function VideoCard({
           onMouseLeave={resetActionProximity}
         >
           <img className="thumb" src={img(video.thumbnail)} alt="" loading="lazy" draggable={false} />
+          {isWatched && video.is_short === 1 && (
+            <div className="thumb-watched-overlay">
+              <span>{t("shortWatched")}</span>
+            </div>
+          )}
           {video.live_status === "live" && (
             <span className="live-badge">
               <span className="pulse" /> {t("liveBadge")}

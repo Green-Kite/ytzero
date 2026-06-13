@@ -119,6 +119,7 @@ interface VideoRow {
   is_short: number | null;
   views: number | null;
   likes: number | null;
+  in_history: number;
   channel_title: string;
 }
 
@@ -166,6 +167,7 @@ const BASE_SELECT = `
   SELECT v.video_id, v.channel_id, v.title, v.description, v.thumbnail,
          v.published_at, v.live_status, v.status, v.bucket, v.show_from, v.is_short, v.views, v.likes,
          v.duration, v.watch_position, v.watch_duration,
+         EXISTS(SELECT 1 FROM history h WHERE h.video_id = v.video_id) AS in_history,
          c.title AS channel_title, c.thumbnail AS channel_thumbnail, c.subscriber_count AS channel_subscriber_count
   FROM videos v JOIN channels c ON c.channel_id = v.channel_id`;
 

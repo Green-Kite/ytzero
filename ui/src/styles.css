@@ -2089,6 +2089,157 @@ body.cinema .watch-layout.theater aside {
   color: var(--text);
 }
 
+/* ── Shorts player ─────────────────────────────────────────────────── */
+.sp-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background: #000;
+  overflow: hidden;
+}
+.sp-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  z-index: 20;
+  background: rgba(0,0,0,0.55);
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+.sp-close:hover { background: rgba(255,255,255,0.18); }
+
+/* The 3-slot ring; each slide is translated within this container */
+.sp-track {
+  position: absolute;
+  inset: 0;
+}
+.sp-slide {
+  position: absolute;
+  inset: 0;
+  /* will be moved via transform: translateY(±100%) */
+}
+.sp-frame {
+  width: 100%;
+  height: 100%;
+}
+.sp-frame iframe {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+.sp-info {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 60px 16px 24px;
+  background: linear-gradient(transparent, rgba(0,0,0,0.78));
+  pointer-events: none;
+  z-index: 5;
+}
+.sp-info-channel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  pointer-events: auto;
+}
+.sp-ch-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.sp-ch-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  text-decoration: none;
+  opacity: 0.9;
+}
+.sp-ch-name:hover { opacity: 1; text-decoration: underline; }
+.sp-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #fff;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Navigation buttons — fixed to right side */
+.sp-nav {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 20;
+}
+.sp-nav-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,0.14);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+  backdrop-filter: blur(4px);
+}
+.sp-nav-btn:hover:not(:disabled) { background: rgba(255,255,255,0.26); }
+.sp-nav-btn:disabled { opacity: 0.22; cursor: default; }
+
+/* Video counter (bottom-right) */
+.sp-counter {
+  position: absolute;
+  bottom: 18px;
+  right: 20px;
+  z-index: 20;
+  font-size: 12px;
+  color: rgba(255,255,255,0.5);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+/* ── Watched overlay on short thumbnail ───────────────────────────── */
+.thumb-watched-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.52);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.thumb-watched-overlay span {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.85);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  background: rgba(0,0,0,0.4);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
 @media (max-width: 760px) {
   .sidebar { width: 68px; }
   .sidebar .nav-label, .sidebar .badge { display: none; }

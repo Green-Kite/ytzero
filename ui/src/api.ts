@@ -24,6 +24,7 @@ export interface Video {
   duration: string | null;
   watch_position: number | null;
   watch_duration: number | null;
+  in_history: number;
   channel_title: string;
   channel_thumbnail: string | null;
   channel_subscriber_count: string | null;
