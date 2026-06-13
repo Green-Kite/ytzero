@@ -25,6 +25,7 @@ export interface Video {
   watch_position: number | null;
   watch_duration: number | null;
   in_history: number;
+  liked: number | null;
   channel_title: string;
   channel_thumbnail: string | null;
   channel_subscriber_count: string | null;
@@ -172,6 +173,7 @@ export const api = {
     status?: string;
     shorts?: boolean;
     only_shorts?: boolean;
+    liked?: boolean;
     limit?: number;
   }) => {
     const qs = new URLSearchParams();
@@ -182,6 +184,7 @@ export const api = {
     if (p.status) qs.set("status", p.status);
     if (p.shorts) qs.set("shorts", "1");
     if (p.only_shorts) qs.set("only_shorts", "1");
+    if (p.liked) qs.set("liked", "1");
     if (p.limit) qs.set("limit", String(p.limit));
     return http<{ videos: Video[] }>(`/feed?${qs}`);
   },
@@ -199,6 +202,8 @@ export const api = {
   archiveVideo: (id: string) => http(`/videos/${id}/archive`, { method: "POST" }),
   restore: (id: string) => http(`/videos/${id}/restore`, { method: "POST" }),
   watch: (id: string) => http(`/videos/${id}/watch`, { method: "POST" }),
+  likeVideo: (id: string, liked: boolean) =>
+    http(`/videos/${id}/like`, { method: "PUT", body: JSON.stringify({ liked }) }),
   tagVideo: (id: string, tag_id: number) =>
     http(`/videos/${id}/tags`, { method: "POST", body: JSON.stringify({ tag_id }) }),
   untagVideo: (id: string, tagId: number) =>

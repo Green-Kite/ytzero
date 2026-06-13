@@ -68,6 +68,8 @@ And leaves out:
 - **Theather view** - distraction-light player layout for watching.
 - **Internationalization** - English and Polish UI, with saved user preference.
 - **Player preferences** - captions, player language, caption language, preferred quality, and Shorts visibility.
+- **Shorts tab** - dedicated Shorts view that shows only Shorts from channels you follow. Filterable by tag, just like the main feed. Watched Shorts are marked in the grid so you always know where you left off.
+- **Shorts player** - a full-screen vertical player for browsing Shorts one at a time. Navigate with on-screen arrows, keyboard arrow keys, or swipe. Space pauses and resumes. The next and previous Shorts are preloaded in the background for instant playback. Controls are hidden so the video fills the screen without distraction.
 - **SponsorBlock** - optional integration with [SponsorBlock](https://sponsor.ajay.app) to automatically skip sponsored segments, intros, outros, interaction reminders, and more. Configurable per category.
 - **Image cache** - local thumbnail and image cache for faster repeat loads.
 

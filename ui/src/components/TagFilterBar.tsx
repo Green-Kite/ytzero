@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { X } from "lucide-react";
 import type { Tag } from "../api";
 import { useI18n } from "../i18n";
@@ -8,11 +9,13 @@ export default function TagFilterBar({
   selected,
   onToggle,
   onClearAll,
+  suffix,
 }: {
   tags: Tag[];
   selected: number[];
   onToggle: (id: number) => void;
   onClearAll?: () => void;
+  suffix?: ReactNode;
 }) {
   const { t } = useI18n();
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -38,31 +41,34 @@ export default function TagFilterBar({
     };
   }, [tags.length, selected.length]);
 
-  if (tags.length === 0) return null;
+  if (tags.length === 0 && !suffix) return null;
   return (
     <div className="chip-filter-row">
-      <div className={`chip-bar-wrap${shadowLeft ? " shadow-left" : ""}${shadowRight ? " shadow-right" : ""}`}>
-        <div className="chip-bar" ref={scrollerRef}>
-          {tags.map((t) => {
-            const active = selected.includes(t.id);
-            return (
-              <button
-                key={t.id}
-                className={`chip${active ? " active" : ""}`}
-                onClick={() => onToggle(t.id)}
-              >
-                {t.name}
-              </button>
-            );
-          })}
+      {tags.length > 0 && (
+        <div className={`chip-bar-wrap${shadowLeft ? " shadow-left" : ""}${shadowRight ? " shadow-right" : ""}`}>
+          <div className="chip-bar" ref={scrollerRef}>
+            {tags.map((t) => {
+              const active = selected.includes(t.id);
+              return (
+                <button
+                  key={t.id}
+                  className={`chip${active ? " active" : ""}`}
+                  onClick={() => onToggle(t.id)}
+                >
+                  {t.name}
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
       {selected.length > 0 && onClearAll && (
         <button className="chip chip-clear" onClick={onClearAll} title={t("clearFilters")}>
           <X size={13} />
           {t("clear")}
         </button>
       )}
+      {suffix}
     </div>
   );
 }

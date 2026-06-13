@@ -119,6 +119,7 @@ interface VideoRow {
   is_short: number | null;
   views: number | null;
   likes: number | null;
+  liked: number | null;
   in_history: number;
   channel_title: string;
 }
@@ -165,7 +166,7 @@ function tagFilterSql(tagIds: number[]) {
 
 const BASE_SELECT = `
   SELECT v.video_id, v.channel_id, v.title, v.description, v.thumbnail,
-         v.published_at, v.live_status, v.status, v.bucket, v.show_from, v.is_short, v.views, v.likes,
+         v.published_at, v.live_status, v.status, v.bucket, v.show_from, v.is_short, v.views, v.likes, v.liked,
          v.duration, v.watch_position, v.watch_duration,
          EXISTS(SELECT 1 FROM history h WHERE h.video_id = v.video_id) AS in_history,
          c.title AS channel_title, c.thumbnail AS channel_thumbnail, c.subscriber_count AS channel_subscriber_count
@@ -236,6 +237,9 @@ api.get("/feed", (c) => {
   }
   if (c.req.query("only_shorts") === "1") {
     where.push("v.is_short = 1");
+  }
+  if (c.req.query("liked") === "1") {
+    where.push("v.liked = 1");
   }
   if (tagsParam) {
     const tagIds = tagsParam.split(",").map(Number).filter(Boolean);
@@ -341,6 +345,12 @@ api.post("/videos/:id/dequeue", (c) => {
 api.post("/videos/:id/watch", (c) => {
   const id = c.req.param("id");
   db.prepare("INSERT INTO history (video_id) VALUES (?)").run(id);
+  return c.json({ ok: true });
+});
+
+api.put("/videos/:id/like", async (c) => {
+  const { liked } = await c.req.json() as { liked: boolean };
+  db.prepare("UPDATE videos SET liked = ? WHERE video_id = ?").run(liked ? 1 : null, c.req.param("id"));
   return c.json({ ok: true });
 });
 

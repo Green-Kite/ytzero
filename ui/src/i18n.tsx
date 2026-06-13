@@ -182,6 +182,9 @@ const labels = {
     appNamePlaceholder: "YT Zero",
     appNameSaved: "App name saved",
     shortWatched: "Watched",
+    like: "Like",
+    unlike: "Unlike",
+    likedOnly: "Liked only",
   },
   pl: {
     navToday: "Główna",
@@ -358,6 +361,9 @@ const labels = {
     appNamePlaceholder: "YT Zero",
     appNameSaved: "Nazwa aplikacji zapisana",
     shortWatched: "Odtworzony",
+    like: "Lubię",
+    unlike: "Usuń polubienie",
+    likedOnly: "Polubione",
   },
 } as const;
 

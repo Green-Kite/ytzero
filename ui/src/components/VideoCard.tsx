@@ -4,6 +4,7 @@ import {
   CalendarDays,
   Coffee,
   Eye,
+  Heart,
   Moon,
   Trash2,
   Undo2,
@@ -68,6 +69,7 @@ export default function VideoCard({
   showChannelAvatar = true,
   onRemoveFromPlaylist,
   isWatched,
+  isLiked,
 }: {
   video: Video;
   onPlay: (v: Video) => void;
@@ -76,6 +78,7 @@ export default function VideoCard({
   showChannelAvatar?: boolean;
   onRemoveFromPlaylist?: (videoId: string) => Promise<unknown>;
   isWatched?: boolean;
+  isLiked?: boolean;
 }) {
   const { t, bucketLabel, language } = useI18n();
   const instanceId = useId();
@@ -281,6 +284,9 @@ export default function VideoCard({
             <div className="thumb-watched-overlay">
               <span>{t("shortWatched")}</span>
             </div>
+          )}
+          {isLiked && video.is_short === 1 && (
+            <span className="thumb-liked-badge"><Heart size={12} fill="currentColor" /></span>
           )}
           {video.live_status === "live" && (
             <span className="live-badge">

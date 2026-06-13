@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Inbox } from "lucide-react";
+import { Heart, Inbox } from "lucide-react";
 import { subscribe } from "../events";
 import { api, type Tag, type Video } from "../api";
 import { useI18n } from "../i18n";
@@ -15,12 +15,16 @@ export default function ShortsPage() {
   const [selectedTags, setSelectedTags] = useState<number[]>(() => {
     try { return JSON.parse(sessionStorage.getItem("shortsTags") ?? "[]"); } catch { return []; }
   });
+  const [likedOnly, setLikedOnly] = useState(() =>
+    sessionStorage.getItem("shortsLikedOnly") === "1"
+  );
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [playerIdx, setPlayerIdx] = useState<number | null>(null);
   const [watchedIds, setWatchedIds] = useState<Set<string>>(new Set());
+  const [likedIds, setLikedIds] = useState<Map<string, boolean>>(new Map());
   const loadMoreRef = useRef<HTMLButtonElement>(null);
   const hasMoreRef = useRef(true);
   const loadingMoreRef = useRef(false);
@@ -29,7 +33,13 @@ export default function ShortsPage() {
     if (requestedPage === 0) setLoading(true);
     else { setLoadingMore(true); loadingMoreRef.current = true; }
     try {
-      const feed = await api.feed({ shorts: true, only_shorts: true, tags: selectedTags, page: requestedPage });
+      const feed = await api.feed({
+        shorts: true,
+        only_shorts: true,
+        tags: selectedTags,
+        liked: likedOnly || undefined,
+        page: requestedPage,
+      });
       setVideos((prev) => (requestedPage === 0 ? feed.videos : [...prev, ...feed.videos]));
       const more = feed.videos.length === 40;
       setHasMore(more);
@@ -39,7 +49,7 @@ export default function ShortsPage() {
       setLoadingMore(false);
       loadingMoreRef.current = false;
     }
-  }, [selectedTags]);
+  }, [selectedTags, likedOnly]);
 
   useEffect(() => { load(0).catch(console.error); }, [load]);
 
@@ -83,6 +93,15 @@ export default function ShortsPage() {
     sessionStorage.removeItem("shortsTags");
   };
 
+  const toggleLikedOnly = () => {
+    setLikedOnly((prev) => {
+      const next = !prev;
+      sessionStorage.setItem("shortsLikedOnly", next ? "1" : "0");
+      return next;
+    });
+    setPage(0);
+  };
+
   const reload = useCallback(() => {
     setPage(0);
     load(0).catch(console.error);
@@ -90,7 +109,7 @@ export default function ShortsPage() {
 
   const loadMore = useCallback(() => {
     if (!hasMoreRef.current || loadingMoreRef.current) return;
-    loadingMoreRef.current = true; // guard against rapid calls before state updates
+    loadingMoreRef.current = true;
     setPage((p) => p + 1);
   }, []);
 
@@ -108,6 +127,17 @@ export default function ShortsPage() {
     });
   }, []);
 
+  const handleLiked = useCallback((videoId: string, liked: boolean) => {
+    setLikedIds((prev) => {
+      const next = new Map(prev);
+      next.set(videoId, liked);
+      return next;
+    });
+    if (likedOnly && !liked) {
+      setVideos((prev) => prev.filter((v) => v.video_id !== videoId));
+    }
+  }, [likedOnly]);
+
   return (
     <>
       {playerIdx !== null && (
@@ -117,12 +147,28 @@ export default function ShortsPage() {
           onClose={() => setPlayerIdx(null)}
           onLoadMore={loadMore}
           onWatched={handleWatched}
+          onLiked={handleLiked}
         />
       )}
 
       <h1 className="page-title">{t("navShorts")}</h1>
 
-      <TagFilterBar tags={tags} selected={selectedTags} onToggle={toggleTag} onClearAll={clearTags} />
+      <TagFilterBar
+        tags={tags}
+        selected={selectedTags}
+        onToggle={toggleTag}
+        onClearAll={clearTags}
+        suffix={
+          <button
+            className={`chip${likedOnly ? " active" : ""}`}
+            onClick={toggleLikedOnly}
+            aria-pressed={likedOnly}
+          >
+            <Heart size={12} fill={likedOnly ? "currentColor" : "none"} />
+            {t("likedOnly")}
+          </button>
+        }
+      />
 
       {loading && videos.length === 0 ? (
         <VideoGridSkeleton gridSize="sm" />
@@ -134,15 +180,19 @@ export default function ShortsPage() {
       ) : (
         <>
           <div className="video-grid video-grid--sm">
-            {videos.map((v) => (
-              <VideoCard
-                key={v.video_id}
-                video={v}
-                onPlay={openPlayer}
-                onChanged={reload}
-                isWatched={v.in_history === 1 || watchedIds.has(v.video_id)}
-              />
-            ))}
+            {videos.map((v) => {
+              const liked = likedIds.has(v.video_id) ? likedIds.get(v.video_id)! : v.liked === 1;
+              return (
+                <VideoCard
+                  key={v.video_id}
+                  video={v}
+                  onPlay={openPlayer}
+                  onChanged={reload}
+                  isWatched={v.in_history === 1 || watchedIds.has(v.video_id)}
+                  isLiked={liked}
+                />
+              );
+            })}
           </div>
           {loadingMore && <VideoGridSkeleton count={4} gridSize="sm" />}
           {hasMore && !loadingMore && (

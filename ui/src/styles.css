@@ -2116,6 +2116,26 @@ body.cinema .watch-layout.theater aside {
 }
 .sp-close:hover { background: rgba(255,255,255,0.18); }
 
+.sp-like {
+  position: absolute;
+  top: 62px;
+  right: 16px;
+  z-index: 20;
+  background: rgba(0,0,0,0.55);
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+.sp-like:hover { background: rgba(255,255,255,0.18); }
+.sp-like--active { color: #ff4d6a; }
+
 /* The 3-slot ring; each slide is translated within this container */
 .sp-track {
   position: absolute;
@@ -2239,6 +2259,23 @@ body.cinema .watch-layout.theater aside {
   padding: 4px 8px;
   border-radius: 4px;
 }
+
+.thumb-liked-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 4;
+  color: #ff4d6a;
+  background: rgba(0,0,0,0.55);
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
 
 @media (max-width: 760px) {
   .sidebar { width: 68px; }

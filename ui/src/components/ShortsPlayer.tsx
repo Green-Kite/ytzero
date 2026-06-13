@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Heart, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api, type Video } from "../api";
+import { useI18n } from "../i18n";
 import { img } from "../img";
 
 let ytApiReady: Promise<void> | null = null;
@@ -44,13 +45,16 @@ export default function ShortsPlayer({
   onClose,
   onLoadMore,
   onWatched,
+  onLiked,
 }: {
   videos: Video[];
   initialIndex: number;
   onClose: () => void;
   onLoadMore: () => void;
   onWatched: (videoId: string) => void;
+  onLiked: (videoId: string, liked: boolean) => void;
 }) {
+  const { t } = useI18n();
   // Stable refs for callbacks & videos to avoid stale closures
   const videosRef = useRef(videos);
   useEffect(() => { videosRef.current = videos; }, [videos]);
@@ -60,9 +64,14 @@ export default function ShortsPlayer({
   useEffect(() => { onWatchedRef.current = onWatched; }, [onWatched]);
   const onCloseRef = useRef(onClose);
   useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+  const onLikedRef = useRef(onLiked);
+  useEffect(() => { onLikedRef.current = onLiked; }, [onLiked]);
 
   // Current video index shown in UI
   const [vidIdx, setVidIdx] = useState(initialIndex);
+
+  // Local liked state per video_id (overrides what came from the list)
+  const [likedOverrides, setLikedOverrides] = useState<Record<string, boolean>>({});
 
   // Which slot is "current" (ring pointer)
   const currentSlotRef = useRef(1); // slot 1 starts as current
@@ -247,9 +256,30 @@ export default function ShortsPlayer({
   const canPrev = vidIdx > 0;
   const canNext = vidIdx < videos.length - 1;
 
+  const isLiked = video
+    ? (video.video_id in likedOverrides ? likedOverrides[video.video_id] : video.liked === 1)
+    : false;
+
+  const toggleLike = useCallback(() => {
+    if (!video) return;
+    const next = !isLiked;
+    setLikedOverrides((prev) => ({ ...prev, [video.video_id]: next }));
+    api.likeVideo(video.video_id, next).catch(() => {
+      setLikedOverrides((prev) => ({ ...prev, [video.video_id]: !next }));
+    });
+    onLikedRef.current(video.video_id, next);
+  }, [video, isLiked]);
+
   return (
     <div className="sp-overlay">
       <button className="sp-close" onClick={onClose} aria-label="Zamknij"><X size={22} /></button>
+      <button
+        className={`sp-like${isLiked ? " sp-like--active" : ""}`}
+        onClick={toggleLike}
+        aria-label={isLiked ? t("unlike") : t("like")}
+      >
+        <Heart size={22} fill={isLiked ? "currentColor" : "none"} />
+      </button>
 
       {/* Ring of 3 slides */}
       <div className="sp-track">
