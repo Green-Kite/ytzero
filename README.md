@@ -1,6 +1,8 @@
 # YouTube Zero
 
 ![YouTube Zero Today view](docs/assets/youtube-zero-today.png)
+![YouTube Zero Settings channels view](docs/assets/youtube-zero-settings-channels.png)
+![YouTube Zero Settings display view](docs/assets/youtube-zero-settings-display.png)
 
 > A self-hosted YouTube subscriptions reader with no Google account, no API key, and no recommendation algorithm.
 
