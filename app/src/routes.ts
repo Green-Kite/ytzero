@@ -92,14 +92,12 @@ function computeShowFrom(bucket: string): string {
   const d = new Date(now);
   const h = now.getHours();
 
-  if (bucket === "morning") {
-    // Next morning at 06:00: today if still night (before 05:00), else tomorrow
-    if (h < 5) d.setHours(6, 0, 0, 0);
-    else { d.setDate(d.getDate() + 1); d.setHours(6, 0, 0, 0); }
-  } else if (bucket === "evening") {
-    // Today 19:00 if before, else tomorrow 19:00
+  if (bucket === "today") {
+    return localSQLite(now);
+  } else if (bucket === "tonight") {
+    // Today at 19:00 if before, otherwise immediately.
     if (h < 19) d.setHours(19, 0, 0, 0);
-    else { d.setDate(d.getDate() + 1); d.setHours(19, 0, 0, 0); }
+    else return localSQLite(now);
   } else if (bucket === "tomorrow") {
     // Always tomorrow 06:00
     d.setDate(d.getDate() + 1);
@@ -221,7 +219,7 @@ api.get("/videos/:id", (c) => {
 
 // ---------- video actions ----------
 
-const BUCKETS = ["morning", "evening", "tomorrow", "weekend"];
+const BUCKETS = ["today", "tonight", "tomorrow", "weekend"];
 
 api.post("/videos/:id/queue", async (c) => {
   const { bucket } = await c.req.json();

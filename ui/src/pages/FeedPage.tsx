@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { subscribe } from "../events";
 import { useSearchParams } from "react-router-dom";
-import { Grid2X2, Grid3X3, Inbox, RefreshCw, Square } from "lucide-react";
+import { Clock, Grid2X2, Grid3X3, Inbox, RefreshCw, Square } from "lucide-react";
 import { api, type Bucket, type Tag, type Video } from "../api";
 import { useI18n } from "../i18n";
 import TagFilterBar from "../components/TagFilterBar";
-import VideoCard, { BUCKET_ICONS } from "../components/VideoCard";
+import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 
 type GridSize = "sm" | "md" | "lg";
@@ -16,15 +16,7 @@ const GRID_SIZES: { id: GridSize; icon: React.ReactNode; labelKey: "gridSmall" |
   { id: "lg", icon: <Square size={15} />, labelKey: "gridLarge" },
 ];
 
-function getTimeBucket(): Bucket | null {
-  const now = new Date();
-  const h = now.getHours();
-  const day = now.getDay(); // 0=Sun, 5=Fri, 6=Sat
-  if (day === 0 || day === 5 || day === 6) return "weekend";
-  if (h >= 5 && h < 12) return "morning";
-  if (h >= 17) return "evening";
-  return "tomorrow";
-}
+const BUCKET_ORDER: Bucket[] = ["today", "tonight", "tomorrow", "weekend"];
 
 export default function FeedPage({
   onPlay,
@@ -33,7 +25,7 @@ export default function FeedPage({
   onPlay: (v: Video) => void;
   showToast: (m: string) => void;
 }) {
-  const { t, bucketLabel, language } = useI18n();
+  const { t, language } = useI18n();
   const [params] = useSearchParams();
   const q = params.get("q") ?? "";
   const [videos, setVideos] = useState<Video[]>([]);
@@ -75,12 +67,17 @@ export default function FeedPage({
     api.tags().then((r) => setTags(r.tags)).catch(console.error);
   }, []);
 
+  const loadQueued = useCallback(() => {
+    api.watchlist().then((r) => setQueued(r.videos)).catch(console.error);
+  }, []);
+
   useEffect(() => {
     loadTags();
-    api.watchlist().then((r) => setQueued(r.videos)).catch(console.error);
-  }, [loadTags]);
+    loadQueued();
+  }, [loadTags, loadQueued]);
 
   useEffect(() => subscribe("tags-changed", loadTags), [loadTags]);
+  useEffect(() => subscribe("queue-changed", loadQueued), [loadQueued]);
 
   // Infinite scroll
   useEffect(() => {
@@ -136,14 +133,18 @@ export default function FeedPage({
     setLoading(true);
     setPage(0);
     load(0).catch(console.error);
+    loadQueued();
   };
 
-  // Time-based queued section — only show videos that have unlocked
-  const timeBucket = getTimeBucket();
+  // Time-based queued sections — only show videos that have unlocked.
   const now = new Date();
-  const sectionVideos = timeBucket
-    ? queued.filter((v) => v.bucket === timeBucket && (!v.show_from || new Date(v.show_from) <= now))
-    : [];
+  const dueQueuedVideos = queued
+    .filter((v) => v.bucket && (!v.show_from || new Date(v.show_from) <= now))
+    .sort((a, b) => {
+      const bucketDiff = BUCKET_ORDER.indexOf(a.bucket!) - BUCKET_ORDER.indexOf(b.bucket!);
+      if (bucketDiff !== 0) return bucketDiff;
+      return new Date(a.show_from ?? 0).getTime() - new Date(b.show_from ?? 0).getTime();
+    });
 
   return (
     <>
@@ -174,14 +175,14 @@ export default function FeedPage({
         </p>
       )}
 
-      {sectionVideos.length > 0 && !q && selectedTags.length === 0 && (
+      {dueQueuedVideos.length > 0 && !q && selectedTags.length === 0 && (
         <div className="time-section">
           <div className="time-section-header">
-            {timeBucket && (() => { const Icon = BUCKET_ICONS[timeBucket]; return <Icon size={16} />; })()}
-            <span>{timeBucket ? bucketLabel(timeBucket) : ""}</span>
+            <Clock size={16} />
+            <span>{t("navWatchlist")}</span>
           </div>
           <div className={`video-grid video-grid--${gridSize}`}>
-            {sectionVideos.map((v) => (
+            {dueQueuedVideos.map((v) => (
               <VideoCard key={v.video_id} video={v} onPlay={onPlay} onChanged={reload} />
             ))}
           </div>

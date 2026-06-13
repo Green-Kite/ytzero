@@ -263,6 +263,7 @@ export default function WatchPage() {
   const queue = async (bucket: Bucket) => {
     setMenuOpen(false);
     await api.queue(video.video_id, bucket);
+    emit("queue-changed");
     reload();
   };
 
@@ -345,7 +346,7 @@ export default function WatchPage() {
             </button>
             {menuOpen && (
               <div className="dropdown-menu">
-                {(["morning", "evening", "tomorrow", "weekend"] as Bucket[]).map((b) => {
+                {(["today", "tonight", "tomorrow", "weekend"] as Bucket[]).map((b) => {
                   const Icon = BUCKET_ICONS[b];
                   return (
                     <button key={b} onClick={() => queue(b)}>

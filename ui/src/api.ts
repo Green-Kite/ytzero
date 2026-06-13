@@ -113,13 +113,13 @@ export interface AppSettings {
   grid_size: string;
 }
 
-export type Bucket = "morning" | "evening" | "tomorrow" | "weekend";
+export type Bucket = "today" | "tonight" | "tomorrow" | "weekend";
 
 export const BUCKET_LABELS: Record<Bucket, string> = {
-  morning: "Na rano",
-  evening: "Na wieczór",
-  tomorrow: "Na jutro",
-  weekend: "Na weekend",
+  today: "Dzisiaj",
+  tonight: "Dziś wieczorem",
+  tomorrow: "Jutro",
+  weekend: "Weekend",
 };
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {

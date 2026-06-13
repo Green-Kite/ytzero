@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Clock, X } from "lucide-react";
 import { api, type Bucket, type Video } from "../api";
+import { emit } from "../events";
 import { type Language, bucketLabels, useI18n } from "../i18n";
 import VideoCard, { BUCKET_ICONS } from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 
-const BUCKET_ORDER: Bucket[] = ["morning", "evening", "tomorrow", "weekend"];
+const BUCKET_ORDER: Bucket[] = ["today", "tonight", "tomorrow", "weekend"];
 
 function formatShowFrom(showFrom: string, language: Language): string {
   const d = new Date(showFrom);
@@ -114,13 +115,13 @@ export default function WatchlistPage({ onPlay }: { onPlay: (v: Video) => void }
                                   className={`icon-btn${active ? " active" : ""}`}
                                   title={active ? bucketLabels[language][bucket] : `${t("moveTo")} ${bucketLabels[language][bucket]}`}
                                   style={active ? { color: "var(--accent)" } : undefined}
-                                  onClick={() => api.queue(v.video_id, bucket).then(load)}
+                                  onClick={() => api.queue(v.video_id, bucket).then(() => { emit("queue-changed"); load(); })}
                                 >
                                   <Icon size={15} />
                                 </button>
                               );
                             })}
-                            <button className="icon-btn" title={t("removeFromQueue")} onClick={() => api.dequeue(v.video_id).then(load)}><X size={15} /></button>
+                            <button className="icon-btn" title={t("removeFromQueue")} onClick={() => api.dequeue(v.video_id).then(() => { emit("queue-changed"); load(); })}><X size={15} /></button>
                           </div>
                         </td>
                       </tr>

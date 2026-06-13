@@ -295,16 +295,16 @@ export type I18nKey = keyof typeof labels.en;
 
 export const bucketLabels: Record<Language, Record<Bucket, string>> = {
   en: {
-    morning: "Morning",
-    evening: "Evening",
+    today: "Today",
+    tonight: "Tonight",
     tomorrow: "Tomorrow",
     weekend: "Weekend",
   },
   pl: {
-    morning: "Na rano",
-    evening: "Na wieczór",
-    tomorrow: "Na jutro",
-    weekend: "Na weekend",
+    today: "Dzisiaj",
+    tonight: "Dziś wieczorem",
+    tomorrow: "Jutro",
+    weekend: "Weekend",
   },
 };
 

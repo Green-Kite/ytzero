@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS videos (
   live_status  TEXT NOT NULL DEFAULT 'none',
   -- inbox | queued | archived
   status       TEXT NOT NULL DEFAULT 'inbox',
-  -- morning | evening | tomorrow | weekend (only when status = 'queued')
+  -- today | tonight | tomorrow | weekend (only when status = 'queued')
   bucket       TEXT,
   queued_at    TEXT,
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
@@ -128,6 +128,8 @@ try { db.exec("ALTER TABLE videos ADD COLUMN watch_duration REAL"); } catch {}
 try { db.exec("ALTER TABLE channels ADD COLUMN subscriber_count TEXT"); } catch {}
 try { db.exec("ALTER TABLE channels ADD COLUMN avatar_checked_at TEXT"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN show_from TEXT"); } catch {}
+db.exec("UPDATE videos SET bucket = 'today' WHERE bucket = 'morning';");
+db.exec("UPDATE videos SET bucket = 'tonight' WHERE bucket = 'evening';");
 
 export const SETTING_DEFAULTS: Record<string, string> = {
   language: "en",

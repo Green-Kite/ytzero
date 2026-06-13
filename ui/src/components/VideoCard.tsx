@@ -1,10 +1,10 @@
 import {
   AlarmClock,
   Archive,
+  CalendarDays,
   Coffee,
   Eye,
   Moon,
-  Sunrise,
   Trash2,
   Undo2,
 } from "lucide-react";
@@ -13,6 +13,7 @@ import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useDrag } from "@use-gesture/react";
 import { api, type Bucket, type Video } from "../api";
+import { emit } from "../events";
 import { compactNumber, formatTimeAgo, formatViewsCount, useI18n } from "../i18n";
 import { img } from "../img";
 
@@ -38,14 +39,14 @@ export function timeAgo(iso: string | null): string {
   return new Date(iso).toLocaleDateString("en-US");
 }
 
-export const BUCKET_ICONS: Record<Bucket, typeof Sunrise> = {
-  morning: Sunrise,
-  evening: Moon,
+export const BUCKET_ICONS: Record<Bucket, typeof CalendarDays> = {
+  today: CalendarDays,
+  tonight: Moon,
   tomorrow: AlarmClock,
   weekend: Coffee,
 };
 
-const BUCKET_ORDER: Bucket[] = ["morning", "evening", "tomorrow", "weekend"];
+const BUCKET_ORDER: Bucket[] = ["today", "tonight", "tomorrow", "weekend"];
 const SWIPE_THRESHOLD = 90;
 
 export default function VideoCard({
@@ -81,6 +82,12 @@ export default function VideoCard({
     e.stopPropagation();
     fade(fn);
   };
+
+  const queueAct = (fn: () => Promise<unknown>) =>
+    fn().then((result) => {
+      emit("queue-changed");
+      return result;
+    });
 
   const bind = useDrag(
     ({ active, movement: [mx], tap, cancel, last }) => {
@@ -262,7 +269,7 @@ export default function VideoCard({
                       key={b}
                       className={`action-btn${active ? " active" : ""}`}
                       title={active ? `${t("removeFrom")} ${bucketLabel(b)}` : bucketLabel(b)}
-                      onClick={(e) => act(e, () => active ? api.dequeue(video.video_id) : api.queue(video.video_id, b))}
+                      onClick={(e) => act(e, () => queueAct(() => active ? api.dequeue(video.video_id) : api.queue(video.video_id, b)))}
                     >
                       <Icon />
                       <span className="action-tip">{active ? t("remove") : bucketLabel(b)}</span>
