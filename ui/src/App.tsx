@@ -1,7 +1,7 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { subscribe, emit } from "./events";
 import { Link, NavLink, Route, Routes, useNavigate, useSearchParams } from "react-router-dom";
-import { Archive, Clock, History, Home, Menu, Play, Plus, Radio, Search, Settings } from "lucide-react";
+import { Archive, Clock, History, Home, Menu, Play, Plus, Radio, Search, Settings, Clapperboard } from "lucide-react";
 import { api, type UserPlaylist, type Video } from "./api";
 import { img } from "./img";
 import FeedPage from "./pages/FeedPage";
@@ -14,10 +14,11 @@ import WatchPage from "./pages/WatchPage";
 import ChannelPage from "./pages/ChannelPage";
 import PlaylistPage from "./pages/PlaylistPage";
 import UserPlaylistPage from "./pages/UserPlaylistPage";
+import ShortsPage from "./pages/ShortsPage";
 import { PlaylistIcon, PlaylistIconPicker } from "./components/PlaylistIcon";
 import { useI18n } from "./i18n";
 
-const NAV = [
+const NAV_STATIC = [
   { to: "/", labelKey: "navToday", icon: Home, end: true },
   { to: "/live", labelKey: "navLive", icon: Radio },
   { to: "/watchlist", labelKey: "navWatchlist", icon: Clock },
@@ -165,7 +166,7 @@ function SidebarPlaylists() {
   );
 }
 
-function TopBar() {
+function TopBar({ appName }: { appName: string }) {
   const { t } = useI18n();
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -194,7 +195,7 @@ function TopBar() {
         <span className="logo-mark">
           <Play fill="currentColor" />
         </span>
-        <span className="logo-text">YouTube Zero</span>
+        <span className="logo-text">{appName}</span>
       </Link>
       <form className="search-wrap" onSubmit={submit}>
         <input
@@ -217,6 +218,9 @@ export default function App() {
   const navigate = useNavigate();
   const [liveCount, setLiveCount] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
+  const [showShorts, setShowShorts] = useState(false);
+  const [shortsTab, setShortsTab] = useState(false);
+  const [appName, setAppName] = useState("YT Zero");
 
   const play = useCallback((v: Video) => navigate(`/watch/${v.video_id}`), [navigate]);
 
@@ -229,6 +233,18 @@ export default function App() {
     const saved = localStorage.getItem(SIDEBAR_KEY);
     if (saved === "0") document.body.classList.add("sidebar-hidden");
   }, []);
+
+  const loadSettings = useCallback(() => {
+    api.settings().then((r) => {
+      setShowShorts(r.settings.show_shorts === "1");
+      setShortsTab(r.settings.shorts_tab === "1");
+      setAppName(r.settings.app_name || "YT Zero");
+    }).catch(() => {});
+  }, []);
+
+  useEffect(loadSettings, [loadSettings]);
+  useEffect(() => subscribe("shorts-tab-changed", loadSettings), [loadSettings]);
+  useEffect(() => subscribe("app-name-changed", loadSettings), [loadSettings]);
 
   useEffect(() => {
     const load = () =>
@@ -243,19 +259,25 @@ export default function App() {
 
   return (
     <div className="layout">
-      <TopBar />
+      <TopBar appName={appName} />
       <div className="layout-body">
         <aside className="sidebar">
-          {NAV.map((item) => (
+          {NAV_STATIC.map((item) => (
             <NavLink key={item.to} to={item.to} end={"end" in item ? item.end : undefined} className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
-              {(() => {
-                const Icon = item.icon;
-                return <Icon />;
-              })()}
+              {(() => { const Icon = item.icon; return <Icon />; })()}
               <span className="nav-label">{t(item.labelKey)}</span>
               {item.to === "/live" && liveCount > 0 && <span className="badge">{liveCount}</span>}
             </NavLink>
-          ))}
+          )).flatMap((el, i) =>
+            i === 0 && (showShorts || shortsTab)
+              ? [el, (
+                <NavLink key="/shorts" to="/shorts" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
+                  <Clapperboard />
+                  <span className="nav-label">{t("navShorts")}</span>
+                </NavLink>
+              )]
+              : [el]
+          )}
           <SidebarSubscriptions />
           <SidebarPlaylists />
         </aside>
@@ -263,6 +285,7 @@ export default function App() {
           <div className="content">
             <Routes>
               <Route path="/" element={<FeedPage onPlay={play} showToast={showToast} />} />
+              <Route path="/shorts" element={<ShortsPage onPlay={play} />} />
               <Route path="/live" element={<LivePage onPlay={play} />} />
               <Route path="/watch/:id" element={<WatchPage />} />
               <Route path="/channel/:id" element={<ChannelPage onPlay={play} />} />

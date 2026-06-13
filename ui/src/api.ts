@@ -112,6 +112,8 @@ export interface AppSettings {
   player_quality: string;
   grid_size: string;
   child_lock_enabled: string;
+  app_name: string;
+  shorts_tab: string;
   sponsorblock_enabled: string;
   sponsorblock_categories: string;
 }
@@ -168,6 +170,7 @@ export const api = {
     channel?: string;
     status?: string;
     shorts?: boolean;
+    only_shorts?: boolean;
     limit?: number;
   }) => {
     const qs = new URLSearchParams();
@@ -177,6 +180,7 @@ export const api = {
     if (p.channel) qs.set("channel", p.channel);
     if (p.status) qs.set("status", p.status);
     if (p.shorts) qs.set("shorts", "1");
+    if (p.only_shorts) qs.set("only_shorts", "1");
     if (p.limit) qs.set("limit", String(p.limit));
     return http<{ videos: Video[] }>(`/feed?${qs}`);
   },

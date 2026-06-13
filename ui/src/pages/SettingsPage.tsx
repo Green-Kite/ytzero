@@ -370,7 +370,10 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [filterChannel, setFilterChannel] = useState("");
   const [playlistName, setPlaylistName] = useState("");
   const [playlistIcon, setPlaylistIcon] = useState("ListMusic");
+  const [appName, setAppName] = useState("YT Zero");
+  const [appNameInput, setAppNameInput] = useState("YT Zero");
   const [showShorts, setShowShorts] = useState(false);
+  const [shortsTab, setShortsTab] = useState(false);
   const [playerHl, setPlayerHl] = useState("pl");
   const [playerCc, setPlayerCc] = useState(false);
   const [playerQuality, setPlayerQuality] = useState("auto");
@@ -408,7 +411,11 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     load().catch(console.error);
     Promise.all([api.settings(), api.childLock()])
       .then(([r, cl]) => {
+        const name = r.settings.app_name || "YT Zero";
+        setAppName(name);
+        setAppNameInput(name);
         setShowShorts(r.settings.show_shorts === "1");
+        setShortsTab(r.settings.shorts_tab === "1");
         setPlayerHl(r.settings.player_hl);
         setPlayerCc(r.settings.player_cc === "1");
         setPlayerQuality(r.settings.player_quality);
@@ -433,6 +440,23 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     setShowShorts(next);
     await api.updateSettings({ show_shorts: next ? "1" : "0" });
     showToast(next ? t("shortsVisible") : t("shortsHidden"));
+  };
+
+  const toggleShortsTab = async () => {
+    const next = !shortsTab;
+    setShortsTab(next);
+    await api.updateSettings({ shorts_tab: next ? "1" : "0" });
+    emit("shorts-tab-changed");
+    showToast(t("displaySettingsSaved"));
+  };
+
+  const saveAppName = async () => {
+    const name = appNameInput.trim() || "YT Zero";
+    setAppName(name);
+    setAppNameInput(name);
+    await api.updateSettings({ app_name: name });
+    emit("app-name-changed");
+    showToast(t("appNameSaved"));
   };
 
   const savePlayer = async (patch: Record<string, string>) => {
@@ -1016,18 +1040,46 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
 
       {!isSettingsLocked && tab === "display" && (
         <section className="settings-section">
+          <div className="settings-select-row">
+            <label className="switch-label" htmlFor="app-name">{t("appNameLabel")}</label>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                id="app-name"
+                type="text"
+                className="select"
+                style={{ flex: 1 }}
+                value={appNameInput}
+                placeholder={t("appNamePlaceholder")}
+                onChange={(e) => setAppNameInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && saveAppName()}
+              />
+              <button className="btn" onClick={saveAppName} disabled={appNameInput.trim() === appName}>{t("save")}</button>
+            </div>
+          </div>
+
           <div className="switch-row">
             <div>
               <div className="switch-label">{t("showShorts")}</div>
-              <div className="switch-sub">
-                {t("showShortsHint")}
-              </div>
+              <div className="switch-sub">{t("showShortsHint")}</div>
             </div>
             <button
               className={`switch${showShorts ? " on" : ""}`}
               role="switch"
               aria-checked={showShorts}
               onClick={toggleShorts}
+            />
+          </div>
+
+          <div className="switch-row">
+            <div>
+              <div className="switch-label">{t("showShortsTab")}</div>
+              <div className="switch-sub">{t("showShortsTabHint")}</div>
+            </div>
+            <button
+              className={`switch${shortsTab ? " on" : ""}`}
+              role="switch"
+              aria-checked={shortsTab}
+              onClick={toggleShortsTab}
             />
           </div>
 

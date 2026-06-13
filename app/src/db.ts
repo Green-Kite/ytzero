@@ -141,6 +141,8 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   grid_size: "sm",
   child_lock_enabled: "0",
   child_lock_pin_hash: "",
+  app_name: "YT Zero",
+  shorts_tab: "1",
   sponsorblock_enabled: "0",
   sponsorblock_categories: '["sponsor"]',
 };

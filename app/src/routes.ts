@@ -232,6 +232,9 @@ api.get("/feed", (c) => {
   if (c.req.query("shorts") !== "1" && getSetting("show_shorts") !== "1") {
     where.push("COALESCE(v.is_short, 0) = 0");
   }
+  if (c.req.query("only_shorts") === "1") {
+    where.push("v.is_short = 1");
+  }
   if (tagsParam) {
     const tagIds = tagsParam.split(",").map(Number).filter(Boolean);
     if (tagIds.length) {
