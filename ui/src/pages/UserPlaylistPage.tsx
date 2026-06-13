@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Edit3, Save, Trash2, X } from "lucide-react";
 import { api, type UserPlaylist, type Video } from "../api";
 import VideoCard from "../components/VideoCard";
+import { VideoGridSkeleton } from "../components/LoadingState";
 import { PlaylistIcon, PlaylistIconPicker } from "../components/PlaylistIcon";
 import Popconfirm from "../components/Popconfirm";
 import { emit } from "../events";
@@ -15,17 +16,23 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: (v: Video) => voi
   const playlistId = Number(id);
   const [playlist, setPlaylist] = useState<UserPlaylist | null>(null);
   const [videos, setVideos] = useState<Video[]>([]);
+  const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState("");
   const [icon, setIcon] = useState("ListMusic");
 
   const load = useCallback(async () => {
     if (!playlistId) return;
-    const r = await api.userPlaylist(playlistId);
-    setPlaylist(r.playlist);
-    setVideos(r.videos);
-    setName(r.playlist.name);
-    setIcon(r.playlist.icon);
+    setLoading(true);
+    try {
+      const r = await api.userPlaylist(playlistId);
+      setPlaylist(r.playlist);
+      setVideos(r.videos);
+      setName(r.playlist.name);
+      setIcon(r.playlist.icon);
+    } finally {
+      setLoading(false);
+    }
   }, [playlistId]);
 
   useEffect(() => {
@@ -46,6 +53,7 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: (v: Video) => voi
     navigate("/");
   };
 
+  if (!playlist && loading) return <VideoGridSkeleton gridSize="sm" />;
   if (!playlist) return null;
 
   return (
@@ -85,7 +93,9 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: (v: Video) => voi
         </div>
       </div>
 
-      {videos.length === 0 ? (
+      {loading && videos.length === 0 ? (
+        <VideoGridSkeleton gridSize="sm" />
+      ) : videos.length === 0 ? (
         <div className="empty-state">{t("playlistIsEmpty")}</div>
       ) : (
         <div className="video-grid video-grid--sm">

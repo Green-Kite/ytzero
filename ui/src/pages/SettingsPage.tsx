@@ -4,6 +4,7 @@ import { Check, FolderUp, ListMusic, MonitorPlay, Pencil, Plus, Tags, Trash2, Tv
 import { api, type Channel, type FilterRule, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule } from "../api";
 import TagChip from "../components/TagChip";
 import { PlaylistIconPicker } from "../components/PlaylistIcon";
+import { TableSkeleton } from "../components/LoadingState";
 import Popconfirm from "../components/Popconfirm";
 import { emit } from "../events";
 import { formatVideoCount, useI18n, type I18nKey, type Language } from "../i18n";
@@ -350,6 +351,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [filterRules, setFilterRules] = useState<FilterRule[]>([]);
   const [playlists, setPlaylists] = useState<UserPlaylist[]>([]);
   const [playlistRules, setPlaylistRules] = useState<Record<number, UserPlaylistRule[]>>({});
+  const [loading, setLoading] = useState(true);
 
   const [channelUrl, setChannelUrl] = useState("");
   const [channelQuery, setChannelQuery] = useState("");
@@ -377,14 +379,19 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [newChannelTagColor, setNewChannelTagColor] = useState("#3ea6ff");
 
   const load = useCallback(async () => {
-    const [ch, tg, rl, fr, pl] = await Promise.all([api.channels(), api.tags(), api.rules(), api.filterRules(), api.userPlaylists()]);
-    setChannels(ch.channels);
-    setTags(tg.tags);
-    setRules(rl.rules);
-    setFilterRules(fr.rules);
-    setPlaylists(pl.playlists);
-    const rulePairs = await Promise.all(pl.playlists.map(async (p) => [p.id, (await api.userPlaylistRules(p.id)).rules] as const));
-    setPlaylistRules(Object.fromEntries(rulePairs));
+    setLoading(true);
+    try {
+      const [ch, tg, rl, fr, pl] = await Promise.all([api.channels(), api.tags(), api.rules(), api.filterRules(), api.userPlaylists()]);
+      setChannels(ch.channels);
+      setTags(tg.tags);
+      setRules(rl.rules);
+      setFilterRules(fr.rules);
+      setPlaylists(pl.playlists);
+      const rulePairs = await Promise.all(pl.playlists.map(async (p) => [p.id, (await api.userPlaylistRules(p.id)).rules] as const));
+      setPlaylistRules(Object.fromEntries(rulePairs));
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -587,9 +594,12 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                   onChange={(e) => setChannelQuery(e.target.value)}
                 />
               </div>
-              <table className="list-table">
-                <tbody>
-                  {filteredChannels.map((ch) => (
+              {loading && channels.length === 0 ? (
+                <TableSkeleton rows={8} columns={5} />
+              ) : (
+                <table className="list-table">
+                  <tbody>
+                    {filteredChannels.map((ch) => (
                     <tr key={ch.channel_id}>
                       <td className="shrink">
                         {ch.thumbnail ? (
@@ -702,10 +712,11 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                         </Popconfirm>
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-              {filteredChannels.length === 0 && (
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {!loading && filteredChannels.length === 0 && (
                 <div className="muted" style={{ paddingTop: 8 }}>
                   {t("noMatchingChannels")}
                 </div>
@@ -750,8 +761,12 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                   <Plus /> {t("addFilter")}
                 </button>
               </div>
-              <FilterRuleGroups rules={filterRules} channels={channels} onSave={async (id, patch) => { await api.updateFilterRule(id, patch); load(); }} onRemove={(id) => api.removeFilterRule(id).then(load)} />
-              {filterRules.length === 0 && <div className="muted" style={{ paddingTop: 8 }}>{t("noFilterRules")}</div>}
+              {loading && filterRules.length === 0 ? (
+                <TableSkeleton rows={5} columns={3} />
+              ) : (
+                <FilterRuleGroups rules={filterRules} channels={channels} onSave={async (id, patch) => { await api.updateFilterRule(id, patch); load(); }} onRemove={(id) => api.removeFilterRule(id).then(load)} />
+              )}
+              {!loading && filterRules.length === 0 && <div className="muted" style={{ paddingTop: 8 }}>{t("noFilterRules")}</div>}
             </>
           )}
         </section>
@@ -786,14 +801,18 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                   <Plus /> {t("addTag")}
                 </button>
               </div>
-              <table className="list-table">
-                <tbody>
-                  {tags.map((t) => (
-                    <TagRow key={t.id} tag={t} onSave={async (patch) => { await api.updateTag(t.id, patch); load(); emit("tags-changed"); }} onRemove={() => api.removeTag(t.id).then(() => { load(); emit("tags-changed"); })} />
-                  ))}
-                </tbody>
-              </table>
-              {tags.length === 0 && <div className="muted" style={{ paddingTop: 8 }}>{t("noTags")}</div>}
+              {loading && tags.length === 0 ? (
+                <TableSkeleton rows={6} columns={3} />
+              ) : (
+                <table className="list-table">
+                  <tbody>
+                    {tags.map((t) => (
+                      <TagRow key={t.id} tag={t} onSave={async (patch) => { await api.updateTag(t.id, patch); load(); emit("tags-changed"); }} onRemove={() => api.removeTag(t.id).then(() => { load(); emit("tags-changed"); })} />
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {!loading && tags.length === 0 && <div className="muted" style={{ paddingTop: 8 }}>{t("noTags")}</div>}
             </>
           )}
 
@@ -829,14 +848,18 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                   <Plus /> {t("addRule")}
                 </button>
               </div>
-              <table className="list-table">
-                <tbody>
-                  {rules.map((r) => (
-                    <RuleRow key={r.id} rule={r} tags={tags} onSave={async (patch) => { await api.updateRule(r.id, patch); load(); }} onRemove={() => api.removeRule(r.id).then(load)} />
-                  ))}
-                </tbody>
-              </table>
-              {rules.length === 0 && <div className="muted" style={{ paddingTop: 8 }}>{t("noTagRules")}</div>}
+              {loading && rules.length === 0 ? (
+                <TableSkeleton rows={6} columns={3} />
+              ) : (
+                <table className="list-table">
+                  <tbody>
+                    {rules.map((r) => (
+                      <RuleRow key={r.id} rule={r} tags={tags} onSave={async (patch) => { await api.updateRule(r.id, patch); load(); }} onRemove={() => api.removeRule(r.id).then(load)} />
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {!loading && rules.length === 0 && <div className="muted" style={{ paddingTop: 8 }}>{t("noTagRules")}</div>}
             </>
           )}
         </section>
@@ -847,17 +870,21 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
           <p className="hint">
             {t("playlistHint")}
           </p>
-          <div className="playlist-settings-list">
-            {playlists.map((p) => (
-              <PlaylistSettingsItem
-                key={p.id}
-                playlist={p}
-                rules={playlistRules[p.id] ?? []}
-                reload={load}
-                showToast={showToast}
-              />
-            ))}
-          </div>
+          {loading && playlists.length === 0 ? (
+            <TableSkeleton rows={4} columns={2} />
+          ) : (
+            <div className="playlist-settings-list">
+              {playlists.map((p) => (
+                <PlaylistSettingsItem
+                  key={p.id}
+                  playlist={p}
+                  rules={playlistRules[p.id] ?? []}
+                  reload={load}
+                  showToast={showToast}
+                />
+              ))}
+            </div>
+          )}
           <div className="form-row" style={{ marginTop: 16 }}>
             <PlaylistIconPicker value={playlistIcon} onChange={setPlaylistIcon} />
             <input

@@ -64,7 +64,16 @@ function SidebarSubscriptions() {
       <div className="sidebar-subs-header">{t("subscriptions")}</div>
       <div className={`sidebar-subs-scroll-wrap${shadowTop ? " shadow-top" : ""}${shadowBot ? " shadow-bot" : ""}`}>
         <div className="sidebar-subs-list" ref={listRef}>
-          {loading && <div className="sidebar-subs-empty">{t("loading")}</div>}
+          {loading && channels.length === 0 && (
+            <div className="sidebar-skeleton-list" aria-label={t("loading")}>
+              {Array.from({ length: 5 }, (_, i) => (
+                <div className="sidebar-skeleton-item" aria-hidden="true" key={i}>
+                  <div className="skeleton sidebar-skeleton-avatar" />
+                  <div className="skeleton skeleton-line" />
+                </div>
+              ))}
+            </div>
+          )}
           {channels.map((ch) => (
             <Link key={ch.channel_id} to={`/channel/${ch.channel_id}`} className="sidebar-sub-item">
               {ch.thumbnail ? (
@@ -92,12 +101,17 @@ function SidebarSubscriptions() {
 function SidebarPlaylists() {
   const { t } = useI18n();
   const [playlists, setPlaylists] = useState<UserPlaylist[]>([]);
+  const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [icon, setIcon] = useState("ListMusic");
 
   const load = useCallback(() => {
-    api.userPlaylists().then((r) => setPlaylists(r.playlists)).catch(() => {});
+    api
+      .userPlaylists()
+      .then((r) => setPlaylists(r.playlists))
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -121,6 +135,16 @@ function SidebarPlaylists() {
           <Plus size={15} />
         </button>
       </div>
+      {loading && playlists.length === 0 && (
+        <div className="sidebar-skeleton-list" aria-label={t("loading")}>
+          {Array.from({ length: 3 }, (_, i) => (
+            <div className="sidebar-skeleton-item" aria-hidden="true" key={i}>
+              <div className="skeleton sidebar-skeleton-square" />
+              <div className="skeleton skeleton-line" />
+            </div>
+          ))}
+        </div>
+      )}
       {playlists.map((p) => (
         <NavLink key={p.id} to={`/playlists/${p.id}`} className={({ isActive }) => `sidebar-playlist-item${isActive ? " active" : ""}`}>
           <span className="sidebar-playlist-icon"><PlaylistIcon icon={p.icon} /></span>

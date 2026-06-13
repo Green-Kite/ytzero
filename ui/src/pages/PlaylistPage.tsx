@@ -4,6 +4,7 @@ import { ExternalLink, Play } from "lucide-react";
 import { api, type PlaylistVideo } from "../api";
 import { useI18n } from "../i18n";
 import { img } from "../img";
+import { PlaylistItemsSkeleton } from "../components/LoadingState";
 
 export default function PlaylistPage() {
   const { t } = useI18n();
@@ -70,7 +71,7 @@ export default function PlaylistPage() {
 
       <div className="playlist-sidebar">
         {loading ? (
-          <div className="empty-state" style={{ padding: 40 }}>{t("loading")}</div>
+          <PlaylistItemsSkeleton />
         ) : videos.length === 0 ? (
           <div className="empty-state" style={{ padding: 40 }}>{t("playlistEmpty")}</div>
         ) : (

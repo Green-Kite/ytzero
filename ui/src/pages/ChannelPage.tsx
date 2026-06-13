@@ -4,6 +4,7 @@ import { Check, ExternalLink, ListVideo, Plus, RefreshCw, UserMinus, UserPlus, V
 import { api, type ChannelAbout, type PlaylistInfo, type Tag, type Video } from "../api";
 import TagChip from "../components/TagChip";
 import VideoCard from "../components/VideoCard";
+import { VideoGridSkeleton } from "../components/LoadingState";
 import { img } from "../img";
 import { emit } from "../events";
 import { formatAddedVideos, formatVideoCount as formatI18nVideoCount, useI18n, type Language } from "../i18n";
@@ -24,6 +25,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const setTab = (t: Tab) => setSearchParams({ tab: t }, { replace: true });
   const [about, setAbout] = useState<ChannelAbout | null>(null);
   const [videos, setVideos] = useState<Video[]>([]);
+  const [videosLoading, setVideosLoading] = useState(true);
   const [playlists, setPlaylists] = useState<PlaylistInfo[] | null>(null);
   const [descOpen, setDescOpen] = useState(false);
   const [followed, setFollowed] = useState(true);
@@ -40,6 +42,8 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   useEffect(() => {
     if (!id) return;
     setAbout(null);
+    setVideos([]);
+    setVideosLoading(true);
     setPlaylists(null);
     setChannelTags([]);
     setSearchParams({ tab: "videos" }, { replace: true });
@@ -47,7 +51,11 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     window.scrollTo(0, 0);
     api.channelAbout(id).then((about) => { setAbout(about); emit("channels-changed"); }).catch(console.error);
     api.channel(id).then((r) => setChannelTags(r.channel.tags)).catch(console.error);
-    api.feed({ channel: id, status: "all", shorts: true, limit: 200 }).then((r) => setVideos(r.videos)).catch(console.error);
+    api
+      .feed({ channel: id, status: "all", shorts: true, limit: 200 })
+      .then((r) => setVideos(r.videos))
+      .catch(console.error)
+      .finally(() => setVideosLoading(false));
     api.channelPlaylists(id).then((r) => setPlaylists(r.playlists)).catch(() => setPlaylists([]));
     api.tags().then((r) => setAllTags(r.tags)).catch(console.error);
   }, [id]);
@@ -62,7 +70,9 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   }, [tagMenuOpen]);
 
   const reload = () => {
-    if (id) api.feed({ channel: id, status: "all", shorts: true, limit: 200 }).then((r) => setVideos(r.videos));
+    if (id) {
+      api.feed({ channel: id, status: "all", shorts: true, limit: 200 }).then((r) => setVideos(r.videos));
+    }
   };
 
   const toggleTag = async (tag: Tag) => {
@@ -250,7 +260,9 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
       </div>
 
       {tab === "videos" &&
-        (regularVideos.length === 0 ? (
+        (videosLoading ? (
+          <VideoGridSkeleton />
+        ) : regularVideos.length === 0 ? (
           <div className="empty-state">{t("channelVideosEmpty")}</div>
         ) : (
           <div className="video-grid">
@@ -261,16 +273,20 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
         ))}
 
       {tab === "shorts" && (
-        <div className="video-grid">
-          {shorts.map((v) => (
-            <VideoCard key={v.video_id} video={v} onPlay={onPlay} onChanged={reload} showChannelAvatar={false} />
-          ))}
-        </div>
+        videosLoading ? (
+          <VideoGridSkeleton />
+        ) : (
+          <div className="video-grid">
+            {shorts.map((v) => (
+              <VideoCard key={v.video_id} video={v} onPlay={onPlay} onChanged={reload} showChannelAvatar={false} />
+            ))}
+          </div>
+        )
       )}
 
       {tab === "playlists" &&
         (playlists === null ? (
-          <div className="empty-state">{t("loading")}</div>
+          <VideoGridSkeleton />
         ) : playlists.length === 0 ? (
           <div className="empty-state">{t("publicPlaylistsEmpty")}</div>
         ) : (

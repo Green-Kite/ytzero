@@ -3,13 +3,19 @@ import { Radio } from "lucide-react";
 import { api, type Video } from "../api";
 import { useI18n } from "../i18n";
 import VideoCard from "../components/VideoCard";
+import { VideoGridSkeleton } from "../components/LoadingState";
 
 export default function LivePage({ onPlay }: { onPlay: (v: Video) => void }) {
   const { t } = useI18n();
   const [videos, setVideos] = useState<Video[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const load = useCallback(() => {
-    api.live().then((r) => setVideos(r.videos)).catch(console.error);
+    api
+      .live()
+      .then((r) => setVideos(r.videos))
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -24,7 +30,9 @@ export default function LivePage({ onPlay }: { onPlay: (v: Video) => void }) {
   return (
     <>
       <h1 className="page-title">{t("navLive")}</h1>
-      {videos.length === 0 ? (
+      {loading && videos.length === 0 ? (
+        <VideoGridSkeleton />
+      ) : videos.length === 0 ? (
         <div className="empty-state">
           <Radio />
           <div>{t("liveEmpty")}</div>

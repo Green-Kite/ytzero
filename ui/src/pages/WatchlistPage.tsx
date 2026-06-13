@@ -3,6 +3,7 @@ import { Clock, X } from "lucide-react";
 import { api, type Bucket, type Video } from "../api";
 import { type Language, bucketLabels, useI18n } from "../i18n";
 import VideoCard, { BUCKET_ICONS } from "../components/VideoCard";
+import { VideoGridSkeleton } from "../components/LoadingState";
 
 const BUCKET_ORDER: Bucket[] = ["morning", "evening", "tomorrow", "weekend"];
 
@@ -26,9 +27,14 @@ function formatShowFrom(showFrom: string, language: Language): string {
 export default function WatchlistPage({ onPlay }: { onPlay: (v: Video) => void }) {
   const { t, bucketLabel, language } = useI18n();
   const [videos, setVideos] = useState<Video[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const load = useCallback(() => {
-    api.watchlist().then((r) => setVideos(r.videos)).catch(console.error);
+    api
+      .watchlist()
+      .then((r) => setVideos(r.videos))
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(load, [load]);
@@ -47,7 +53,9 @@ export default function WatchlistPage({ onPlay }: { onPlay: (v: Video) => void }
   return (
     <>
       <h1 className="page-title">{t("navWatchlist")}</h1>
-      {videos.length === 0 ? (
+      {loading && videos.length === 0 ? (
+        <VideoGridSkeleton />
+      ) : videos.length === 0 ? (
         <div className="empty-state">
           <Clock />
           <div>{t("watchlistEmpty")}</div>

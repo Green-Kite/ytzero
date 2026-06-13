@@ -6,6 +6,7 @@ import { api, type Bucket, type Tag, type Video } from "../api";
 import { useI18n } from "../i18n";
 import TagFilterBar from "../components/TagFilterBar";
 import VideoCard, { BUCKET_ICONS } from "../components/VideoCard";
+import { VideoGridSkeleton } from "../components/LoadingState";
 
 type GridSize = "sm" | "md" | "lg";
 
@@ -43,6 +44,8 @@ export default function FeedPage({
   });
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [gridSize, setGridSize] = useState<GridSize>(
     () => (localStorage.getItem("gridSize") as GridSize) ?? "sm"
@@ -51,10 +54,17 @@ export default function FeedPage({
 
   useEffect(() => setPage(0), [q]);
 
-  const load = useCallback(async () => {
-    const feed = await api.feed({ tags: selectedTags, q, page });
-    setVideos((prev) => (page === 0 ? feed.videos : [...prev, ...feed.videos]));
-    setHasMore(feed.videos.length === 40);
+  const load = useCallback(async (requestedPage = page) => {
+    if (requestedPage === 0) setLoading(true);
+    else setLoadingMore(true);
+    try {
+      const feed = await api.feed({ tags: selectedTags, q, page: requestedPage });
+      setVideos((prev) => (requestedPage === 0 ? feed.videos : [...prev, ...feed.videos]));
+      setHasMore(feed.videos.length === 40);
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
   }, [selectedTags, q, page]);
 
   useEffect(() => {
@@ -91,6 +101,7 @@ export default function FeedPage({
   };
 
   const toggleTag = (id: number) => {
+    setLoading(true);
     setPage(0);
     setSelectedTags((s) => {
       const next = s.includes(id) ? s.filter((t) => t !== id) : [...s, id];
@@ -100,6 +111,7 @@ export default function FeedPage({
   };
 
   const clearTags = () => {
+    setLoading(true);
     setPage(0);
     setSelectedTags([]);
     sessionStorage.removeItem("feedTags");
@@ -110,8 +122,9 @@ export default function FeedPage({
     try {
       const r = await api.refresh();
       showToast(language === "pl" ? `Odświeżono ${r.channels} kanałów, ${r.added} nowych filmów` : `Refreshed ${r.channels} channels, ${r.added} new videos`);
+      setLoading(true);
       setPage(0);
-      await load();
+      await load(0);
     } catch (e) {
       showToast(`${t("refreshError")} ${e instanceof Error ? e.message : e}`);
     } finally {
@@ -120,8 +133,9 @@ export default function FeedPage({
   };
 
   const reload = () => {
+    setLoading(true);
     setPage(0);
-    load().catch(console.error);
+    load(0).catch(console.error);
   };
 
   // Time-based queued section — only show videos that have unlocked
@@ -175,7 +189,9 @@ export default function FeedPage({
         </div>
       )}
 
-      {videos.length === 0 ? (
+      {loading && videos.length === 0 ? (
+        <VideoGridSkeleton gridSize={gridSize} />
+      ) : videos.length === 0 ? (
         <div className="empty-state">
           <Inbox />
           <div>
@@ -191,7 +207,8 @@ export default function FeedPage({
               <VideoCard key={v.video_id} video={v} onPlay={onPlay} onChanged={reload} />
             ))}
           </div>
-          {hasMore && (
+          {loadingMore && <VideoGridSkeleton count={4} gridSize={gridSize} />}
+          {hasMore && !loadingMore && (
             <div className="load-more">
               <button ref={loadMoreRef} className="btn" onClick={() => setPage((p) => p + 1)}>
                 {t("loadMore")}
