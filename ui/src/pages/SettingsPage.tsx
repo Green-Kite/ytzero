@@ -734,7 +734,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
               {loading && channels.length === 0 ? (
                 <TableSkeleton rows={8} columns={5} />
               ) : (
-                <table className="list-table">
+                <table className="list-table list-table--channels">
                   <tbody>
                     {filteredChannels.map((ch) => (
                     <tr key={ch.channel_id}>

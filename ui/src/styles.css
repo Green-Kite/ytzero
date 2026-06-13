@@ -2292,4 +2292,81 @@ body.cinema .watch-layout.theater aside {
   .nav-link { justify-content: center; }
   .topbar-logo .logo-text { display: none; }
   .content { padding: 14px calc(14px + var(--safe-right)) calc(60px + var(--safe-bottom)) calc(14px + var(--safe-left)); }
+
+  /* ── settings ───────────────────────────────────────── */
+
+  /* tabs: horizontal scroll, no icons */
+  .settings-tabs {
+    overflow-x: auto;
+    scrollbar-width: none;
+    flex-wrap: nowrap;
+    gap: 0;
+  }
+  .settings-tabs::-webkit-scrollbar { display: none; }
+  .settings-tab { padding: 8px 10px; font-size: 12.5px; white-space: nowrap; }
+  .settings-tab svg { display: none; }
+  .settings-subtabs { overflow-x: auto; scrollbar-width: none; flex-wrap: nowrap; gap: 0; }
+  .settings-subtabs::-webkit-scrollbar { display: none; }
+  .settings-subtab { white-space: nowrap; }
+
+  /* sections */
+  .settings-section { padding: 14px 14px; border-radius: 12px; }
+
+  /* select rows: stack label above select */
+  .settings-select-row { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .settings-select-row .select { min-width: 0; width: 100%; }
+
+  /* form rows: wrap and stretch text inputs */
+  .form-row { flex-wrap: wrap; }
+  .form-row input[type="text"],
+  .form-row input[type="password"],
+  .form-row .form-input { flex: 1 1 140px; min-width: 0; }
+  /* selects in form rows wrap individually */
+  .form-row select { flex: 1 1 120px; min-width: 0; }
+
+  /* ── channel table: 2-row grid per channel ──────────── */
+  .list-table--channels,
+  .list-table--channels tbody { display: block; }
+  .list-table--channels tr {
+    display: grid;
+    grid-template-columns: 36px 1fr auto auto auto;
+    grid-template-rows: auto auto;
+    gap: 4px 8px;
+    padding: 10px 0;
+    border-top: 1px solid var(--surface-2);
+    align-items: center;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .list-table--channels td { border-top: none; padding: 2px 0; white-space: nowrap; }
+  /* row 1: avatar (col 1) | name spans cols 2–5 */
+  .list-table--channels td:nth-child(1) { grid-column: 1; grid-row: 1; }
+  .list-table--channels td:nth-child(2) { grid-column: 2 / 6; grid-row: 1; min-width: 0; white-space: normal; overflow: hidden; }
+  /* row 2: empty (col 1) | tag-btn | follow | delete */
+  .list-table--channels td:nth-child(3) { grid-column: 2; grid-row: 2; }
+  .list-table--channels td:nth-child(4) { grid-column: 3; grid-row: 2; }
+  .list-table--channels td:nth-child(5) { grid-column: 4; grid-row: 2; }
+  /* follow/unfollow: show only icon to save space */
+  .list-table--channels td:nth-child(4) .btn { font-size: 0; padding: 0 8px; gap: 0; min-width: 32px; }
+  .list-table--channels td:nth-child(4) .btn svg { width: 15px; height: 15px; }
+
+  /* ── simpler 3-col tables (tags, rules, filter rules) ─ */
+  .list-table:not(.list-table--channels),
+  .list-table:not(.list-table--channels) tbody { display: block; width: 100%; }
+  .list-table:not(.list-table--channels) tr {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 0;
+    border-top: 1px solid var(--surface-2);
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .list-table:not(.list-table--channels) td { border-top: none; padding: 2px 0; }
+  /* override desktop width:1% on shrink cells — interferes with flex */
+  .list-table:not(.list-table--channels) td.shrink { width: auto; white-space: normal; flex-shrink: 0; }
+  /* main content cell stretches → shrink cells sit on the right */
+  .list-table:not(.list-table--channels) td:not(.shrink):not(.muted) { flex: 1; min-width: 0; overflow: hidden; }
+  /* secondary count — not critical on mobile */
+  .list-table:not(.list-table--channels) td.muted { display: none; }
 }
