@@ -1046,7 +1046,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
               <input
                 id="app-name"
                 type="text"
-                className="select"
+                className="form-input"
                 style={{ flex: 1 }}
                 value={appNameInput}
                 placeholder={t("appNamePlaceholder")}

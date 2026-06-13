@@ -1698,7 +1698,7 @@ body.cinema .watch-layout.theater aside {
 .settings-section h2 svg { width: 18px; height: 18px; stroke-width: 1.8; color: var(--text-2); }
 .settings-section .hint { color: var(--text-2); font-size: 12.5px; margin: 0 0 16px; line-height: 1.5; }
 .form-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
-.form-row input[type="text"], .form-row input[type="password"], .form-row select, .select {
+.form-row input[type="text"], .form-row input[type="password"], .form-row select, .select, .form-input {
   background: var(--bg);
   border: 1px solid var(--surface-3);
   border-radius: 8px;
@@ -1718,7 +1718,7 @@ body.cinema .watch-layout.theater aside {
   background-position: right 11px center;
   cursor: pointer;
 }
-.form-row input[type="text"]:focus, .form-row input[type="password"]:focus, .form-row select:focus, .select:focus { border-color: var(--accent); }
+.form-row input[type="text"]:focus, .form-row input[type="password"]:focus, .form-row select:focus, .select:focus, .form-input:focus { border-color: var(--accent); }
 .form-row input[type="color"] {
   width: 36px;
   height: 36px;
