@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Check, FolderUp, LoaderCircle, ListMusic, MonitorPlay, Pencil, Plus, ShieldCheck, Tags, Trash2, Tv, UserMinus, UserPlus, X, Zap } from "lucide-react";
+import { Check, Filter, FolderUp, LoaderCircle, ListMusic, MonitorPlay, Pencil, Plus, ShieldCheck, Tags, Trash2, Tv, UserMinus, UserPlus, X, Zap } from "lucide-react";
 import { api, type Channel, type ChildLockStatus, type FilterRule, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule, SB_CATEGORIES } from "../api";
 import TagChip from "../components/TagChip";
+import Tooltip from "../components/Tooltip";
 import { PlaylistIconPicker } from "../components/PlaylistIcon";
 import { TableSkeleton } from "../components/LoadingState";
 import Popconfirm from "../components/Popconfirm";
@@ -129,14 +130,15 @@ function PlaylistSettingsItem({
   );
 }
 
-function TagRow({ tag, onSave, onRemove }: { tag: Tag; onSave: (p: { name?: string; color?: string }) => Promise<void>; onRemove: () => void }) {
+function TagRow({ tag, onSave, onRemove }: { tag: Tag; onSave: (p: { name?: string; color?: string; filter_only?: number }) => Promise<void>; onRemove: () => void }) {
   const { t, language } = useI18n();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(tag.name);
   const [color, setColor] = useState(tag.color);
+  const [filterOnly, setFilterOnly] = useState(!!tag.filter_only);
 
   const save = async () => {
-    await onSave({ name, color });
+    await onSave({ name, color, filter_only: filterOnly ? 1 : 0 });
     setEditing(false);
   };
 
@@ -151,9 +153,20 @@ function TagRow({ tag, onSave, onRemove }: { tag: Tag; onSave: (p: { name?: stri
         </td>
         <td className="muted">{formatVideoCount(tag.video_count ?? 0, language)} · {language === "pl" ? `${tag.channel_count ?? 0} kanałów` : `${tag.channel_count ?? 0} channels`}</td>
         <td className="shrink">
+          <Tooltip text={t("filterOnlyHint")} pos="left">
+            <button
+              className="icon-btn"
+              style={filterOnly ? { color: "var(--accent)" } : { opacity: 0.3 }}
+              onClick={() => setFilterOnly(!filterOnly)}
+            >
+              <Filter size={15} />
+            </button>
+          </Tooltip>
+        </td>
+        <td className="shrink">
           <div style={{ display: "flex", gap: 4 }}>
             <button className="icon-btn" title={t("save")} onClick={save}><Check /></button>
-            <button className="icon-btn" title={t("cancel")} onClick={() => { setName(tag.name); setColor(tag.color); setEditing(false); }}><X /></button>
+            <button className="icon-btn" title={t("cancel")} onClick={() => { setName(tag.name); setColor(tag.color); setFilterOnly(!!tag.filter_only); setEditing(false); }}><X /></button>
           </div>
         </td>
       </tr>
@@ -164,6 +177,17 @@ function TagRow({ tag, onSave, onRemove }: { tag: Tag; onSave: (p: { name?: stri
     <tr>
       <td><TagChip tag={{ ...tag, name, color }} /></td>
       <td className="muted">{formatVideoCount(tag.video_count ?? 0, language)} · {language === "pl" ? `${tag.channel_count ?? 0} kanałów` : `${tag.channel_count ?? 0} channels`}</td>
+      <td className="shrink">
+        <Tooltip text={t("filterOnlyHint")} pos="left">
+          <button
+            className="icon-btn"
+            style={tag.filter_only ? { color: "var(--accent)" } : { opacity: 0.3 }}
+            onClick={() => onSave({ filter_only: tag.filter_only ? 0 : 1 })}
+          >
+            <Filter size={15} />
+          </button>
+        </Tooltip>
+      </td>
       <td className="shrink">
         <div style={{ display: "flex", gap: 4 }}>
           <button className="icon-btn" title={t("edit")} onClick={() => setEditing(true)}><Pencil /></button>
@@ -354,6 +378,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [playlistRules, setPlaylistRules] = useState<Record<number, UserPlaylistRule[]>>({});
   const [loading, setLoading] = useState(true);
   const [addingChannel, setAddingChannel] = useState(false);
+  const [addingTag, setAddingTag] = useState(false);
 
   const [channelUrl, setChannelUrl] = useState("");
   const [channelQuery, setChannelQuery] = useState("");
@@ -558,11 +583,18 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   };
 
   const addTag = async () => {
-    if (!tagName.trim()) return;
-    await api.addTag(tagName.trim(), tagColor);
-    setTagName("");
-    load();
-    emit("tags-changed");
+    if (!tagName.trim() || addingTag) return;
+    setAddingTag(true);
+    try {
+      await api.addTag(tagName.trim(), tagColor);
+      setTagName("");
+      load();
+      emit("tags-changed");
+    } catch (e) {
+      showToast(`${language === "pl" ? "Błąd" : "Error"}: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setAddingTag(false);
+    }
   };
 
   const addRule = async () => {
@@ -930,12 +962,13 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                   type="text"
                   placeholder={t("tagNameExample")}
                   value={tagName}
+                  disabled={addingTag}
                   onChange={(e) => setTagName(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && addTag()}
                 />
-                <input type="color" value={tagColor} onChange={(e) => setTagColor(e.target.value)} />
-                <button className="btn primary" onClick={addTag}>
-                  <Plus /> {t("addTag")}
+                <input type="color" value={tagColor} disabled={addingTag} onChange={(e) => setTagColor(e.target.value)} />
+                <button className="btn primary" onClick={addTag} disabled={addingTag || !tagName.trim()}>
+                  {addingTag ? <LoaderCircle className="spin" /> : <Plus />} {t("addTag")}
                 </button>
               </div>
               {loading && tags.length === 0 ? (

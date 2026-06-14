@@ -130,7 +130,7 @@ function attachTags(videos: VideoRow[]) {
   const ph = ids.map(() => "?").join(",");
   const videoTags = db
     .prepare(
-      `SELECT vt.video_id, t.id, t.name, t.color, vt.source FROM video_tags vt
+      `SELECT vt.video_id, t.id, t.name, t.color, t.filter_only, vt.source FROM video_tags vt
        JOIN tags t ON t.id = vt.tag_id WHERE vt.video_id IN (${ph})`
     )
     .all(...ids) as any[];
@@ -138,7 +138,7 @@ function attachTags(videos: VideoRow[]) {
   const chPh = channelIds.map(() => "?").join(",");
   const channelTags = db
     .prepare(
-      `SELECT ct.channel_id, t.id, t.name, t.color FROM channel_tags ct
+      `SELECT ct.channel_id, t.id, t.name, t.color, t.filter_only FROM channel_tags ct
        JOIN tags t ON t.id = ct.tag_id WHERE ct.channel_id IN (${chPh})`
     )
     .all(...channelIds) as any[];
@@ -146,12 +146,24 @@ function attachTags(videos: VideoRow[]) {
   return videos.map((v) => {
     const own = videoTags
       .filter((t) => t.video_id === v.video_id)
-      .map((t) => ({ id: t.id, name: t.name, color: t.color, source: t.source }));
+      .map((t) => ({ id: t.id, name: t.name, color: t.color, filter_only: t.filter_only, source: t.source }));
     const inherited = channelTags
       .filter((t) => t.channel_id === v.channel_id && !own.some((o) => o.id === t.id))
-      .map((t) => ({ id: t.id, name: t.name, color: t.color, source: "channel" }));
+      .map((t) => ({ id: t.id, name: t.name, color: t.color, filter_only: t.filter_only, source: "channel" }));
     return { ...v, tags: [...own, ...inherited] };
   });
+}
+
+/** WHERE fragment excluding videos that have a filter_only tag unless one of those tags is selected. */
+function filterOnlySql(tagIds: number[]) {
+  const noFO = `(NOT EXISTS (SELECT 1 FROM video_tags vt2 JOIN tags t2 ON t2.id = vt2.tag_id WHERE vt2.video_id = v.video_id AND t2.filter_only = 1)
+     AND NOT EXISTS (SELECT 1 FROM channel_tags ct2 JOIN tags t2 ON t2.id = ct2.tag_id WHERE ct2.channel_id = v.channel_id AND t2.filter_only = 1))`;
+  if (tagIds.length === 0) return { sql: noFO, params: [] };
+  const ph = tagIds.map(() => "?").join(",");
+  return {
+    sql: `(${noFO} OR EXISTS (SELECT 1 FROM video_tags vt3 JOIN tags t3 ON t3.id = vt3.tag_id WHERE vt3.video_id = v.video_id AND t3.filter_only = 1 AND t3.id IN (${ph})) OR EXISTS (SELECT 1 FROM channel_tags ct3 JOIN tags t3 ON t3.id = ct3.tag_id WHERE ct3.channel_id = v.channel_id AND t3.filter_only = 1 AND t3.id IN (${ph})))`,
+    params: [...tagIds, ...tagIds],
+  };
 }
 
 /** WHERE fragment matching videos that have ANY of the given tags (own or via channel). */
@@ -241,13 +253,17 @@ api.get("/feed", (c) => {
   if (c.req.query("liked") === "1") {
     where.push("v.liked = 1");
   }
-  if (tagsParam) {
-    const tagIds = tagsParam.split(",").map(Number).filter(Boolean);
-    if (tagIds.length) {
-      const f = tagFilterSql(tagIds);
-      where.push(f.sql);
-      params.push(...f.params);
-    }
+  const tagIds = tagsParam ? tagsParam.split(",").map(Number).filter(Boolean) : [];
+  if (tagIds.length) {
+    const f = tagFilterSql(tagIds);
+    where.push(f.sql);
+    params.push(...f.params);
+  }
+  // Exclude filter_only-tagged videos unless the relevant tag is actively selected
+  if (!channel) {
+    const fo = filterOnlySql(tagIds);
+    where.push(fo.sql);
+    params.push(...fo.params);
   }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const rows = db
@@ -703,10 +719,11 @@ api.post("/tags", async (c) => {
 });
 
 api.patch("/tags/:id", async (c) => {
-  const { name, color } = await c.req.json();
+  const { name, color, filter_only } = await c.req.json();
   const id = c.req.param("id");
   if (name !== undefined) db.prepare("UPDATE tags SET name = ? WHERE id = ?").run(name.trim(), id);
   if (color !== undefined) db.prepare("UPDATE tags SET color = ? WHERE id = ?").run(color, id);
+  if (filter_only !== undefined) db.prepare("UPDATE tags SET filter_only = ? WHERE id = ?").run(filter_only ? 1 : 0, id);
   const tag = db.prepare("SELECT * FROM tags WHERE id = ?").get(id);
   return c.json({ tag });
 });

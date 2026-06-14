@@ -185,6 +185,8 @@ const labels = {
     like: "Like",
     unlike: "Unlike",
     likedOnly: "Liked only",
+    filterOnly: "Filter only",
+    filterOnlyHint: "Videos with this tag only appear when this tag is selected as a filter",
   },
   pl: {
     navToday: "Główna",
@@ -364,6 +366,8 @@ const labels = {
     like: "Lubię",
     unlike: "Usuń polubienie",
     likedOnly: "Polubione",
+    filterOnly: "Tylko z filtrem",
+    filterOnlyHint: "Filmy z tym tagiem pojawiają się w feedzie tylko gdy ten tag jest wybrany jako filtr",
   },
 } as const;
 

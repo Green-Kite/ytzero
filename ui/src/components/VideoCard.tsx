@@ -18,6 +18,7 @@ import { api, type Bucket, type Video } from "../api";
 import { emit } from "../events";
 import { compactNumber, formatTimeAgo, formatViewsCount, useI18n } from "../i18n";
 import { img } from "../img";
+import Tooltip from "./Tooltip";
 
 export function compactViews(views: number | null): string {
   if (views == null) return "";
@@ -317,42 +318,45 @@ export default function VideoCard({
                   const Icon = BUCKET_ICONS[b];
                   const active = video.bucket === b;
                   return (
-                    <button
-                      key={b}
-                      className={`action-btn${active ? " active" : ""}`}
-                      title={active ? `${t("removeFrom")} ${bucketLabel(b)}` : bucketLabel(b)}
-                      onClick={(e) => act(e, () => queueAct(() => active ? api.dequeue(video.video_id) : api.queue(video.video_id, b)))}
-                    >
-                      <Icon />
-                      <span className="action-tip">{active ? t("remove") : bucketLabel(b)}</span>
-                    </button>
+                    <Tooltip key={b} text={active ? t("remove") : bucketLabel(b)}>
+                      <button
+                        className={`action-btn${active ? " active" : ""}`}
+                        onClick={(e) => act(e, () => queueAct(() => active ? api.dequeue(video.video_id) : api.queue(video.video_id, b)))}
+                      >
+                        <Icon />
+                      </button>
+                    </Tooltip>
                   );
                 })}
                 {video.status !== "archived" && (
-                  <button className="action-btn" onClick={(e) => act(e, () => api.archiveVideo(video.video_id))}>
-                    <Archive />
-                    <span className="action-tip">{t("reject")}</span>
-                  </button>
+                  <Tooltip text={t("reject")}>
+                    <button className="action-btn" onClick={(e) => act(e, () => api.archiveVideo(video.video_id))}>
+                      <Archive />
+                    </button>
+                  </Tooltip>
                 )}
               </div>
               <div className="thumb-actions-row secondary">
                 {video.status !== "archived" && (
-                  <button className="action-btn" onClick={(e) => act(e, () => api.archiveVideo(video.video_id))}>
-                    <Eye />
-                    <span className="action-tip">{t("watched")}</span>
-                  </button>
+                  <Tooltip text={t("watched")}>
+                    <button className="action-btn" onClick={(e) => act(e, () => api.archiveVideo(video.video_id))}>
+                      <Eye />
+                    </button>
+                  </Tooltip>
                 )}
                 {showRestore && (
-                  <button className="action-btn" onClick={(e) => act(e, () => api.restore(video.video_id))}>
-                    <Undo2 />
-                    <span className="action-tip">{t("restore")}</span>
-                  </button>
+                  <Tooltip text={t("restore")}>
+                    <button className="action-btn" onClick={(e) => act(e, () => api.restore(video.video_id))}>
+                      <Undo2 />
+                    </button>
+                  </Tooltip>
                 )}
                 {onRemoveFromPlaylist && (
-                  <button className="action-btn" onClick={(e) => act(e, () => onRemoveFromPlaylist(video.video_id))}>
-                    <Trash2 />
-                    <span className="action-tip">{t("removeFromPlaylist")}</span>
-                  </button>
+                  <Tooltip text={t("removeFromPlaylist")}>
+                    <button className="action-btn" onClick={(e) => act(e, () => onRemoveFromPlaylist(video.video_id))}>
+                      <Trash2 />
+                    </button>
+                  </Tooltip>
                 )}
               </div>
             </div>

@@ -2,6 +2,7 @@ export interface Tag {
   id: number;
   name: string;
   color: string;
+  filter_only?: number;
   source?: "manual" | "auto" | "channel";
   video_count?: number;
   channel_count?: number;
@@ -229,7 +230,7 @@ export const api = {
   tags: () => http<{ tags: Tag[] }>("/tags"),
   addTag: (name: string, color: string) =>
     http<{ tag: Tag }>("/tags", { method: "POST", body: JSON.stringify({ name, color }) }),
-  updateTag: (id: number, patch: { name?: string; color?: string }) =>
+  updateTag: (id: number, patch: { name?: string; color?: string; filter_only?: number }) =>
     http<{ tag: Tag }>(`/tags/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   removeTag: (id: number) => http(`/tags/${id}`, { method: "DELETE" }),
 
