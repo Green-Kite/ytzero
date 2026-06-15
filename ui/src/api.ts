@@ -167,6 +167,12 @@ export interface ChildLockStatus {
   locked: boolean;
 }
 
+export interface AppLogs {
+  path: string;
+  size: number;
+  lines: string[];
+}
+
 export type Bucket = "today" | "tonight" | "tomorrow" | "weekend";
 
 export const BUCKET_LABELS: Record<Bucket, string> = {
@@ -220,6 +226,7 @@ export const api = {
   externalVideos: () => http<{ videos: Video[] }>("/external"),
   clearExternal: () => http<{ deleted: number }>("/external", { method: "DELETE" }),
   removeExternal: (id: string) => http<{ deleted: number }>(`/external/${id}`, { method: "DELETE" }),
+  logs: (limit = 300) => http<AppLogs>(`/logs?limit=${limit}`),
   live: () => http<{ videos: Video[] }>("/live"),
   video: (id: string) => http<{ video: Video; related: Video[] }>(`/videos/${id}`),
   watchlist: () => http<{ videos: Video[] }>("/watchlist"),

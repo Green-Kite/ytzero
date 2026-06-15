@@ -1928,6 +1928,67 @@ body.cinema .watch-layout.theater .watch-row .btn.active {
 }
 .settings-section h2 svg { width: 18px; height: 18px; stroke-width: 1.8; color: var(--text-2); }
 .settings-section .hint { color: var(--text-2); font-size: 12.5px; margin: 0 0 16px; line-height: 1.5; }
+.logs-meta {
+  color: var(--text-2);
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.logs-viewer {
+  max-height: min(62vh, 720px);
+  overflow: auto;
+  margin: 0;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--surface-3);
+  color: var(--text-2);
+  font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+.log-line {
+  display: grid;
+  grid-template-columns: minmax(174px, auto) 58px minmax(180px, 0.8fr) minmax(0, 1.6fr);
+  gap: 8px;
+  align-items: baseline;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+.log-line:nth-child(odd) { background: rgba(255,255,255,0.025); }
+.log-line--raw {
+  display: block;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.log-time { color: var(--text-3); white-space: nowrap; }
+.log-level {
+  justify-self: start;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.log-line--info .log-level { color: #8bd0ff; background: rgba(62,166,255,0.13); }
+.log-line--warn .log-level { color: #fbbf24; background: rgba(251,191,36,0.13); }
+.log-line--error .log-level { color: #ff7a8b; background: rgba(255,77,106,0.14); }
+.log-event {
+  color: var(--text);
+  font-weight: 650;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.log-json {
+  color: var(--text-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.json-key { color: #8bd0ff; }
+.json-string { color: #7dd3a8; }
+.json-number { color: #fbbf24; }
+.json-literal { color: #f472b6; }
+.json-punctuation { color: var(--text-3); }
 .form-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
 .form-row input[type="text"], .form-row input[type="password"], .form-row select, .select, .form-input {
   background: var(--bg);
@@ -2660,6 +2721,13 @@ body.cinema .watch-layout.theater .watch-row .btn.active {
   .settings-tabs::-webkit-scrollbar { display: none; }
   .settings-tab { padding: 8px 10px; font-size: 12.5px; white-space: nowrap; }
   .settings-tab svg { display: none; }
+  .log-line {
+    grid-template-columns: auto 1fr;
+    gap: 3px 8px;
+  }
+  .log-time,
+  .log-event,
+  .log-json { grid-column: 1 / -1; }
   .settings-subtabs { overflow-x: auto; scrollbar-width: none; flex-wrap: nowrap; gap: 0; }
   .settings-subtabs::-webkit-scrollbar { display: none; }
   .settings-subtab { white-space: nowrap; }

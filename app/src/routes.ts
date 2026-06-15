@@ -17,8 +17,14 @@ import { refreshAll, refreshChannel, refreshLiveStatus, syncChannel } from "./re
 import { applyRuleToAllVideos } from "./autotags";
 import { applyPlaylistRuleToAllVideos, applyPlaylistRulesForPlaylist } from "./userPlaylists";
 import { applyFilterRuleToAll } from "./filterRules";
+import { log, readRecentLogs } from "./logger";
 
 export const api = new Hono();
+
+api.onError((err, c) => {
+  log.error("api.unhandled_error", { path: c.req.path, method: c.req.method, error: err.message });
+  return c.json({ error: err.message }, 500);
+});
 
 // ---------- helpers ----------
 
@@ -395,7 +401,7 @@ api.get("/videos/:id/info", async (c) => {
     `);
 
     // Insert the watched video (no-op if already in DB as a real video)
-    insertVideo.run(
+    const inserted = insertVideo.run(
       info.videoId, info.channelId, info.title, info.description,
       info.thumbnail, info.publishedAt, info.viewCount, info.duration
     );
@@ -412,8 +418,15 @@ api.get("/videos/:id/info", async (c) => {
       });
       insertMany(feed.videos);
     }
+    log.info("external.video_info_loaded", {
+      videoId: info.videoId,
+      channelId: info.channelId,
+      inserted: inserted.changes > 0,
+      relatedImported: feed?.videos.length ?? 0,
+    });
     return c.json({ info });
   } catch (e) {
+    log.error("external.video_info_failed", { videoId: c.req.param("id"), error: e instanceof Error ? e.message : String(e) });
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
   }
 });
@@ -570,12 +583,13 @@ api.post("/channels", async (c) => {
   const { url } = await c.req.json();
   if (!url) return c.json({ error: "url required" }, 400);
   const info = await resolveChannelId(url);
-  db.prepare(
+  const inserted = db.prepare(
     "INSERT OR IGNORE INTO channels (channel_id, title, url, thumbnail) VALUES (?, ?, ?, ?)"
   ).run(info.channelId, info.title, `https://www.youtube.com/channel/${info.channelId}`, info.thumbnail);
+  log.info("channel.added", { channelId: info.channelId, title: info.title, inserted: inserted.changes > 0 });
   refreshChannel(info.channelId)
     .then(() => refreshLiveStatus(info.channelId))
-    .catch(console.error);
+    .catch((e) => log.error("channel.initial_refresh_failed", { channelId: info.channelId, error: e instanceof Error ? e.message : String(e) }));
   return c.json({ ok: true, channel_id: info.channelId, title: info.title });
 });
 
@@ -680,8 +694,10 @@ api.post("/channels/:id/sync", async (c) => {
   const channelId = c.req.param("id");
   try {
     const result = await syncChannel(channelId);
+    log.info("channel.sync_requested", { channelId, added: result.added });
     return c.json({ ok: true, added: result.added });
   } catch (e) {
+    log.error("channel.sync_failed", { channelId, error: e instanceof Error ? e.message : String(e) });
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
   }
 });
@@ -822,7 +838,8 @@ api.post("/channels/import", async (c) => {
     const r = insert.run(e.channelId, e.title, `https://www.youtube.com/channel/${e.channelId}`);
     if (r.changes > 0) added++;
   }
-  refreshAll().catch(console.error);
+  log.info("channels.imported", { fileName: file.name, found: entries.length, added });
+  refreshAll().catch((e) => log.error("channels.import_refresh_failed", { error: e instanceof Error ? e.message : String(e) }));
   return c.json({ ok: true, found: entries.length, added });
 });
 
@@ -1029,5 +1046,11 @@ api.put("/settings", async (c) => {
 
 api.post("/refresh", async (c) => {
   const result = await refreshAll();
+  log.info("refresh.manual_requested", { channels: result.channels, added: result.added, errors: result.errors.length });
   return c.json(result);
+});
+
+api.get("/logs", (c) => {
+  const limit = Math.min(1000, Math.max(1, Number(c.req.query("limit") ?? 300)));
+  return c.json(readRecentLogs(limit));
 });

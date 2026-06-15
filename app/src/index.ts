@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { api } from "./routes";
 import { startScheduler } from "./refresher";
+import { log } from "./logger";
 
 const app = new Hono();
 
@@ -17,4 +18,4 @@ startScheduler();
 
 const port = Number(process.env.PORT ?? 3001);
 const server = Bun.serve({ port, fetch: app.fetch });
-console.log(`[ytzero] listening on ${server.url}`);
+log.info("app.listen", { url: String(server.url), port, uiDir });

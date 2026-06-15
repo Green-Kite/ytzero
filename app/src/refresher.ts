@@ -3,6 +3,7 @@ import { checkIsShort, fetchChannelAbout, fetchChannelFeed, fetchChannelVideos, 
 import { applyAutoTags } from "./autotags";
 import { applyPlaylistRulesToVideo } from "./userPlaylists";
 import { applyFilterRules } from "./filterRules";
+import { log } from "./logger";
 
 const upsertVideo = db.prepare(`
   INSERT INTO videos (video_id, channel_id, title, description, thumbnail, published_at, views, likes)
@@ -19,6 +20,7 @@ const upsertVideo = db.prepare(`
 const videoExists = db.prepare("SELECT 1 FROM videos WHERE video_id = ?");
 
 export async function refreshChannel(channelId: string): Promise<{ added: number }> {
+  const startedAt = Date.now();
   const feed = await fetchChannelFeed(channelId);
   const inheritChannelTags = db.prepare(
     "INSERT OR IGNORE INTO video_tags (video_id, tag_id, source) SELECT ?, tag_id, 'channel' FROM channel_tags WHERE channel_id = ?"
@@ -34,6 +36,7 @@ export async function refreshChannel(channelId: string): Promise<{ added: number
       applyPlaylistRulesToVideo(v.videoId);
       inheritChannelTags.run(v.videoId, channelId);
       added++;
+      log.info("video.added", { source: "rss", channelId, videoId: v.videoId, title: v.title, publishedAt: v.publishedAt });
     }
   }
   await backfillShorts(feed.videos.map((v) => v.videoId));
@@ -54,6 +57,7 @@ export async function refreshChannel(channelId: string): Promise<{ added: number
     ).run(feed.channelTitle, channelId);
   }
   db.prepare("UPDATE channels SET last_refreshed_at = datetime('now') WHERE channel_id = ?").run(channelId);
+  if (added > 0) log.info("channel.refresh.added", { channelId, title: feed.channelTitle, added, ms: Date.now() - startedAt });
   return { added };
 }
 
@@ -78,6 +82,7 @@ export async function backfillShorts(videoIds?: string[], limit = 50) {
   for (const r of rows) {
     const short = await checkIsShort(r.video_id, r.title);
     setShort.run(short ? 1 : 0, r.video_id);
+    log.info("video.short_checked", { videoId: r.video_id, isShort: short });
     await Bun.sleep(120);
   }
 }
@@ -104,6 +109,7 @@ export async function refreshLiveStatus(channelId: string) {
     ).run(live.videoId, channelId, live.title, live.thumbnail, status);
     applyAutoTags(live.videoId, live.title, "");
     applyPlaylistRulesToVideo(live.videoId);
+    log.info("live.video_added", { channelId, videoId: live.videoId, status, title: live.title });
   }
 }
 
@@ -112,6 +118,7 @@ export async function refreshLiveStatus(channelId: string) {
  * Merges scraped data with RSS data (RSS has better quality: description + published_at).
  */
 export async function syncChannel(channelId: string): Promise<{ added: number }> {
+  const startedAt = Date.now();
   const [feed, scraped] = await Promise.all([
     fetchChannelFeed(channelId).catch(() => ({ videos: [], channelTitle: "", channelId })),
     fetchChannelVideos(channelId),
@@ -155,6 +162,7 @@ export async function syncChannel(channelId: string): Promise<{ added: number }>
       applyPlaylistRulesToVideo(v.videoId);
       inheritChannelTags.run(v.videoId, channelId);
       added++;
+      log.info("video.added", { source: "sync", channelId, videoId: v.videoId, title: rss?.title ?? v.title, publishedAt: rss?.publishedAt ?? null });
     }
   }
 
@@ -169,10 +177,12 @@ export async function syncChannel(channelId: string): Promise<{ added: number }>
       applyPlaylistRulesToVideo(v.videoId);
       inheritChannelTags.run(v.videoId, channelId);
       added++;
+      log.info("video.added", { source: "rss-only", channelId, videoId: v.videoId, title: v.title, publishedAt: v.publishedAt });
     }
   }
 
   db.prepare("UPDATE channels SET last_refreshed_at = datetime('now') WHERE channel_id = ?").run(channelId);
+  log.info("channel.sync.complete", { channelId, added, scraped: scraped.length, rss: feed.videos.length, ms: Date.now() - startedAt });
   return { added };
 }
 
@@ -199,8 +209,10 @@ export async function refreshAvatarsBatch() {
     try {
       const about = await fetchChannelAbout(channel_id);
       saveAvatar.run(about.avatar || null, about.title || null, about.stats[0] ?? null, channel_id);
-    } catch {
+      log.info("channel.avatar_refreshed", { channelId: channel_id, title: about.title });
+    } catch (e) {
       markChecked.run(channel_id);
+      log.warn("channel.avatar_refresh_failed", { channelId: channel_id, error: e instanceof Error ? e.message : String(e) });
     }
     if (i < rows.length - 1) await Bun.sleep(5_000);
   }
@@ -209,10 +221,15 @@ export async function refreshAvatarsBatch() {
 let refreshing = false;
 
 export async function refreshAll(): Promise<{ channels: number; added: number; errors: string[] }> {
-  if (refreshing) return { channels: 0, added: 0, errors: ["refresh already in progress"] };
+  if (refreshing) {
+    log.warn("refresh.skipped", { reason: "already_in_progress" });
+    return { channels: 0, added: 0, errors: ["refresh already in progress"] };
+  }
   refreshing = true;
+  const startedAt = Date.now();
   try {
     const channels = db.prepare("SELECT channel_id FROM channels").all() as { channel_id: string }[];
+    log.info("refresh.start", { channels: channels.length });
     let added = 0;
     const errors: string[] = [];
     for (const { channel_id } of channels) {
@@ -221,7 +238,9 @@ export async function refreshAll(): Promise<{ channels: number; added: number; e
         added += r.added;
         await refreshLiveStatus(channel_id);
       } catch (e) {
-        errors.push(`${channel_id}: ${e instanceof Error ? e.message : String(e)}`);
+        const error = e instanceof Error ? e.message : String(e);
+        errors.push(`${channel_id}: ${error}`);
+        log.error("channel.refresh_failed", { channelId: channel_id, error });
       }
       // Be polite to YouTube.
       await Bun.sleep(300);
@@ -229,6 +248,7 @@ export async function refreshAll(): Promise<{ channels: number; added: number; e
     // Resolve any remaining unchecked videos (e.g. rows from before the
     // shorts column existed).
     await backfillShorts();
+    log.info("refresh.complete", { channels: channels.length, added, errors: errors.length, ms: Date.now() - startedAt });
     return { channels: channels.length, added, errors };
   } finally {
     refreshing = false;
@@ -237,12 +257,12 @@ export async function refreshAll(): Promise<{ channels: number; added: number; e
 
 export function startScheduler() {
   const intervalMin = Number(process.env.REFRESH_INTERVAL_MINUTES ?? 15);
-  setTimeout(() => refreshAll().catch(console.error), 3_000);
-  setInterval(() => refreshAll().catch(console.error), intervalMin * 60_000);
-  console.log(`[ytzero] feed refresh every ${intervalMin} min`);
+  setTimeout(() => refreshAll().catch((e) => log.error("refresh.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 3_000);
+  setInterval(() => refreshAll().catch((e) => log.error("refresh.cron_failed", { error: e instanceof Error ? e.message : String(e) })), intervalMin * 60_000);
+  log.info("scheduler.feed_refresh", { intervalMin });
 
   // Avatar cron: fetch 3 channels every 10 minutes, 5 s gap between each
-  setTimeout(() => refreshAvatarsBatch().catch(console.error), 15_000);
-  setInterval(() => refreshAvatarsBatch().catch(console.error), 10 * 60_000);
-  console.log("[ytzero] avatar refresh every 10 min (3 channels/batch)");
+  setTimeout(() => refreshAvatarsBatch().catch((e) => log.error("avatars.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 15_000);
+  setInterval(() => refreshAvatarsBatch().catch((e) => log.error("avatars.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 10 * 60_000);
+  log.info("scheduler.avatar_refresh", { intervalMin: 10, batchSize: 3 });
 }

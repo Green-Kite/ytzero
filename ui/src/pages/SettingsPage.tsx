@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Check, Clock, Filter, FolderUp, LoaderCircle, ListMusic, MonitorPlay, Pencil, Plus, ShieldCheck, Tags, Trash2, Tv, UserMinus, UserPlus, X, Zap } from "lucide-react";
-import { api, type Channel, type ChildLockStatus, type FilterRule, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES } from "../api";
+import { Check, Clock, FileText, Filter, FolderUp, LoaderCircle, ListMusic, MonitorPlay, Pencil, Plus, RefreshCw, ShieldCheck, Tags, Trash2, Tv, UserMinus, UserPlus, X, Zap } from "lucide-react";
+import { api, type AppLogs, type Channel, type ChildLockStatus, type FilterRule, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES } from "../api";
 import { img } from "../img";
 import TagChip from "../components/TagChip";
 import Tooltip from "../components/Tooltip";
@@ -11,7 +11,7 @@ import Popconfirm from "../components/Popconfirm";
 import { emit } from "../events";
 import { formatVideoCount, useI18n, type I18nKey, type Language } from "../i18n";
 
-type Tab = "channels" | "tags" | "playlists" | "display" | "external" | "child";
+type Tab = "channels" | "tags" | "playlists" | "display" | "external" | "logs" | "child";
 
 const TABS: { id: Tab; labelKey: I18nKey; icon: React.ReactNode }[] = [
   { id: "channels", labelKey: "channels", icon: <Tv size={15} /> },
@@ -19,8 +19,48 @@ const TABS: { id: Tab; labelKey: I18nKey; icon: React.ReactNode }[] = [
   { id: "playlists", labelKey: "playlists", icon: <ListMusic size={15} /> },
   { id: "display", labelKey: "display", icon: <MonitorPlay size={15} /> },
   { id: "external", labelKey: "navExternal", icon: <Clock size={15} /> },
+  { id: "logs", labelKey: "logs", icon: <FileText size={15} /> },
   { id: "child", labelKey: "child", icon: <ShieldCheck size={15} /> },
 ];
+
+type LogLevel = "INFO" | "WARN" | "ERROR";
+
+function JsonHighlight({ json }: { json: string }) {
+  const tokens = json.match(/"[^"\\]*(?:\\.[^"\\]*)*"(?=\s*:)|"[^"\\]*(?:\\.[^"\\]*)*"|-?\d+(?:\.\d+)?|true|false|null|[{}[\]:,]/g);
+  if (!tokens) return <>{json}</>;
+  return (
+    <>
+      {tokens.map((token, i) => {
+        const isKey = /^"/.test(token) && tokens[i + 1] === ":";
+        const cls =
+          isKey ? "json-key" :
+          /^"/.test(token) ? "json-string" :
+          /^(true|false|null)$/.test(token) ? "json-literal" :
+          /^-?\d/.test(token) ? "json-number" :
+          "json-punctuation";
+        return <span key={`${i}-${token}`} className={cls}>{token}</span>;
+      })}
+    </>
+  );
+}
+
+function LogLine({ line }: { line: string }) {
+  const match = line.match(/^(\S+)\s+(INFO|WARN|ERROR)\s+([^\s]+)(?:\s+(.*))?$/);
+  if (!match) return <div className="log-line log-line--raw">{line}</div>;
+
+  const [, timestamp, level, event, rawMeta] = match as [string, string, LogLevel, string, string | undefined];
+
+  return (
+    <div className={`log-line log-line--${level.toLowerCase()}`}>
+      <span className="log-time">{timestamp}</span>
+      <span className="log-level">{level}</span>
+      <span className="log-event">{event}</span>
+      {rawMeta ? (
+        <span className="log-json"><JsonHighlight json={rawMeta} /></span>
+      ) : null}
+    </div>
+  );
+}
 
 function PlaylistSettingsItem({
   playlist,
@@ -385,6 +425,8 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [externalVideos, setExternalVideos] = useState<Video[]>([]);
   const [loadingExternal, setLoadingExternal] = useState(false);
   const [clearingExternal, setClearingExternal] = useState(false);
+  const [logs, setLogs] = useState<AppLogs | null>(null);
+  const [loadingLogs, setLoadingLogs] = useState(false);
 
   const [channelUrl, setChannelUrl] = useState("");
   const [channelQuery, setChannelQuery] = useState("");
@@ -446,9 +488,18 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
       .finally(() => setLoadingExternal(false));
   }, []);
 
+  const loadLogs = useCallback(() => {
+    setLoadingLogs(true);
+    api.logs()
+      .then(setLogs)
+      .catch(console.error)
+      .finally(() => setLoadingLogs(false));
+  }, []);
+
   useEffect(() => {
     if (tab === "external") loadExternal();
-  }, [tab, loadExternal]);
+    if (tab === "logs") loadLogs();
+  }, [tab, loadExternal, loadLogs]);
 
   const clearExternal = async () => {
     setClearingExternal(true);
@@ -1363,6 +1414,44 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
               </div>
             );
           })()}
+        </section>
+      )}
+
+      {!isSettingsLocked && tab === "logs" && (
+        <section className="settings-section">
+          <div className="page-head" style={{ marginBottom: 16 }}>
+            <div>
+              <h1 className="page-title" style={{ margin: 0 }}>{t("logs")}</h1>
+              <p className="page-hint" style={{ margin: "6px 0 0" }}>
+                {t("logsHint").replace("{path}", logs?.path ?? "")}
+              </p>
+            </div>
+            <button className="btn" onClick={loadLogs} disabled={loadingLogs}>
+              {loadingLogs ? <LoaderCircle size={15} className="spin" /> : <RefreshCw size={15} />}
+              {t("refresh")}
+            </button>
+          </div>
+          {loadingLogs && !logs ? (
+            <TableSkeleton rows={8} columns={1} />
+          ) : !logs || logs.lines.length === 0 ? (
+            <div className="empty-state">
+              <FileText />
+              <div>{t("logsEmpty")}</div>
+            </div>
+          ) : (
+            <>
+              <div className="logs-meta">
+                {t("logsShowing")
+                  .replace("{count}", String(logs.lines.length))
+                  .replace("{size}", logs.size.toLocaleString(language === "pl" ? "pl-PL" : "en-US"))}
+              </div>
+              <div className="logs-viewer">
+                {logs.lines.map((line, i) => (
+                  <LogLine key={`${i}-${line}`} line={line} />
+                ))}
+              </div>
+            </>
+          )}
         </section>
       )}
 
