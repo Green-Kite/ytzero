@@ -53,6 +53,7 @@ const BUCKET_ORDER: Bucket[] = ["today", "tonight", "tomorrow", "weekend"];
 const SWIPE_THRESHOLD = 90;
 const SWIPE_EXIT_GUTTER = 24;
 const SWIPE_MAX_DRAG = 160;
+const SWIPE_FEEDBACK_MS = 720;
 
 type ViewTransitionDocument = Document & {
   startViewTransition?: (callback: () => void) => unknown;
@@ -169,7 +170,7 @@ export default function VideoCard({
         ? api.archiveVideo(video.video_id)
         : api.watch(video.video_id).then(() => api.archiveVideo(video.video_id));
       action.then(() => {
-        setTimeout(removeWithLayoutAnimation, 620);
+        setTimeout(removeWithLayoutAnimation, SWIPE_FEEDBACK_MS);
       });
     } else {
       setCommittedDir(null);
