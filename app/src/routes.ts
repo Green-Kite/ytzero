@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { db, getSetting, setSetting, SETTING_DEFAULTS } from "./db";
 import {
+  type ChannelAbout,
   fetchChannelAbout,
   fetchChannelFeed,
   fetchChannelPlaylists,
@@ -432,9 +433,30 @@ api.get("/videos/:id/info", async (c) => {
   }
 });
 
+async function refreshVideoChapters(videoId: string) {
+  const chapters = await fetchVideoChapters(videoId);
+  // Persist only when the video is in our DB (UPDATE no-ops otherwise).
+  db.prepare("UPDATE videos SET chapters_json = ?, chapters_fetched_at = datetime('now') WHERE video_id = ?")
+    .run(JSON.stringify(chapters), videoId);
+  return chapters;
+}
+
 api.get("/videos/:id/chapters", async (c) => {
+  const videoId = c.req.param("id");
+  const cached = db.prepare("SELECT chapters_json, chapters_fetched_at FROM videos WHERE video_id = ?")
+    .get(videoId) as { chapters_json: string | null; chapters_fetched_at: string | null } | null;
+
+  if (cached?.chapters_json) {
+    if (ageMs(cached.chapters_fetched_at) > CHAPTERS_DB_TTL) {
+      refreshVideoChapters(videoId).catch(() => {});
+    }
+    try {
+      return c.json({ chapters: JSON.parse(cached.chapters_json) });
+    } catch { /* corrupted cache — fall through */ }
+  }
+
   try {
-    return c.json({ chapters: await fetchVideoChapters(c.req.param("id")) });
+    return c.json({ chapters: await refreshVideoChapters(videoId) });
   } catch {
     return c.json({ chapters: [] });
   }
@@ -670,35 +692,112 @@ api.delete("/channels/:id/tags/:tagId", (c) => {
   return c.json({ ok: true });
 });
 
+/** Milliseconds since a SQLite datetime('now') timestamp (stored as UTC). */
+function ageMs(ts: string | null): number {
+  if (!ts) return Infinity;
+  const t = Date.parse(ts.replace(" ", "T") + "Z");
+  return Number.isFinite(t) ? Date.now() - t : Infinity;
+}
+
+const ABOUT_DB_TTL = 24 * 60 * 60_000; // refresh the cached about at most daily
+const PLAYLISTS_DB_TTL = 24 * 60 * 60_000;
+const CHAPTERS_DB_TTL = 7 * 24 * 60 * 60_000;
+
+function persistChannelAbout(channelId: string, about: ChannelAbout) {
+  db.prepare(
+    `UPDATE channels SET about_json = ?, about_fetched_at = datetime('now'),
+       thumbnail = COALESCE(?, thumbnail), title = COALESCE(?, title), subscriber_count = COALESCE(?, subscriber_count)
+     WHERE channel_id = ?`
+  ).run(JSON.stringify(about), about.avatar || null, about.title || null, about.stats[0] ?? null, channelId);
+}
+
+/** Fetch about from YouTube, persist it, and backfill video durations. */
+async function refreshChannelAbout(channelId: string): Promise<ChannelAbout> {
+  const about = await fetchChannelAbout(channelId);
+  persistChannelAbout(channelId, about);
+  fetchChannelVideosDurations(channelId).then((durations) => {
+    const upd = db.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND duration IS NULL");
+    for (const d of durations) upd.run(d.duration, d.videoId);
+  }).catch(() => {});
+  return about;
+}
+
 api.get("/channels/:id/about", async (c) => {
   const channelId = c.req.param("id");
-  try {
-    const about = await fetchChannelAbout(channelId);
-    // Persist fresh avatar, title and subscriber count
-    if (about.avatar || about.stats.length > 0) {
-      db.prepare("UPDATE channels SET thumbnail = ?, title = ?, subscriber_count = ? WHERE channel_id = ?")
-        .run(about.avatar || null, about.title || null, about.stats[0] ?? null, channelId);
+  // Real counts from our own data — stable regardless of how many pages the
+  // UI has loaded (NULL is_short counts as a regular video, matching the UI).
+  const row = db.prepare(
+    "SELECT COUNT(*) AS total, COALESCE(SUM(is_short = 1), 0) AS shorts FROM videos WHERE channel_id = ?"
+  ).get(channelId) as { total: number; shorts: number };
+  const counts = { videos: row.total - row.shorts, shorts: row.shorts };
+
+  // Serve the cached about from the DB; only touch YouTube when it's missing
+  // or stale (and then in the background, so the page never waits on it).
+  const cachedRow = db.prepare("SELECT about_json, about_fetched_at FROM channels WHERE channel_id = ?")
+    .get(channelId) as { about_json: string | null; about_fetched_at: string | null } | null;
+
+  if (cachedRow?.about_json) {
+    if (ageMs(cachedRow.about_fetched_at) > ABOUT_DB_TTL) {
+      refreshChannelAbout(channelId).catch((e) =>
+        log.warn("channel.about.refresh_failed", { channelId, error: e instanceof Error ? e.message : String(e) }));
     }
-    // Background: populate durations for this channel's videos
-    fetchChannelVideosDurations(channelId).then((durations) => {
-      const upd = db.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND duration IS NULL");
-      for (const d of durations) upd.run(d.duration, d.videoId);
-    }).catch(() => {});
-    // Real counts from our own data — stable regardless of how many pages the
-    // UI has loaded (NULL is_short counts as a regular video, matching the UI).
-    const row = db.prepare(
-      "SELECT COUNT(*) AS total, COALESCE(SUM(is_short = 1), 0) AS shorts FROM videos WHERE channel_id = ?"
-    ).get(channelId) as { total: number; shorts: number };
-    const counts = { videos: row.total - row.shorts, shorts: row.shorts };
-    return c.json({ ...about, counts });
+    try {
+      return c.json({ ...(JSON.parse(cachedRow.about_json) as ChannelAbout), counts });
+    } catch {
+      // corrupted cache — fall through to a fresh fetch
+    }
+  }
+
+  // No usable cache: fetch synchronously this once, then it's served from DB.
+  try {
+    return c.json({ ...(await refreshChannelAbout(channelId)), counts });
   } catch (e) {
-    return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
+    // YouTube can rate-limit (429) or change layout — fall back to the basic
+    // columns so the page still shows avatar/title/subs instead of breaking.
+    const ch = db.prepare("SELECT title, thumbnail, subscriber_count FROM channels WHERE channel_id = ?")
+      .get(channelId) as { title: string; thumbnail: string | null; subscriber_count: string | null } | null;
+    if (!ch) return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
+    log.warn("channel.about.fallback", { channelId, error: e instanceof Error ? e.message : String(e) });
+    return c.json({
+      channelId,
+      title: ch.title ?? "",
+      description: "",
+      avatar: ch.thumbnail ?? "",
+      banner: "",
+      stats: ch.subscriber_count ? [ch.subscriber_count] : [],
+      links: [],
+      joinedDate: "",
+      viewCount: "",
+      handle: "",
+      counts,
+    });
   }
 });
 
+async function refreshChannelPlaylists(channelId: string) {
+  const playlists = await fetchChannelPlaylists(channelId);
+  db.prepare("UPDATE channels SET playlists_json = ?, playlists_fetched_at = datetime('now') WHERE channel_id = ?")
+    .run(JSON.stringify(playlists), channelId);
+  return playlists;
+}
+
 api.get("/channels/:id/playlists", async (c) => {
+  const channelId = c.req.param("id");
+  const cached = db.prepare("SELECT playlists_json, playlists_fetched_at FROM channels WHERE channel_id = ?")
+    .get(channelId) as { playlists_json: string | null; playlists_fetched_at: string | null } | null;
+
+  if (cached?.playlists_json) {
+    if (ageMs(cached.playlists_fetched_at) > PLAYLISTS_DB_TTL) {
+      refreshChannelPlaylists(channelId).catch((e) =>
+        log.warn("channel.playlists.refresh_failed", { channelId, error: e instanceof Error ? e.message : String(e) }));
+    }
+    try {
+      return c.json({ playlists: JSON.parse(cached.playlists_json) });
+    } catch { /* corrupted cache — fall through */ }
+  }
+
   try {
-    return c.json({ playlists: await fetchChannelPlaylists(c.req.param("id")) });
+    return c.json({ playlists: await refreshChannelPlaylists(channelId) });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
   }

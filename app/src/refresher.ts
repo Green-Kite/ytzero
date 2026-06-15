@@ -19,6 +19,11 @@ const upsertVideo = db.prepare(`
 
 const videoExists = db.prepare("SELECT 1 FROM videos WHERE video_id = ?");
 
+// Politeness limits for the playlist scan during a manual sync, to avoid
+// tripping YouTube's rate limiting (HTTP 429).
+const MAX_SYNC_PLAYLISTS = 25;
+const PLAYLIST_SYNC_DELAY_MS = 800;
+
 // Insert-only: never clobber an existing video's richer fields (e.g. a real
 // upload's description) with the sparse data a playlist feed carries.
 const insertPlaylistVideo = db.prepare(`
@@ -235,17 +240,22 @@ export async function syncChannel(channelId: string): Promise<{ added: number }>
   // Surface videos hidden in the channel's playlists — these include older
   // uploads that no longer appear in the RSS feed or /videos tab. Each
   // playlist's videos are imported (deduped) into their owning channel.
+  // Throttled and capped to stay under YouTube's rate limiting (429).
   let playlistsScanned = 0;
   try {
-    const playlists = await fetchChannelPlaylists(channelId);
-    for (const pl of playlists) {
+    const playlists = (await fetchChannelPlaylists(channelId)).slice(0, MAX_SYNC_PLAYLISTS);
+    for (let i = 0; i < playlists.length; i++) {
       try {
-        const r = await importPlaylistVideos(pl.playlistId);
+        const r = await importPlaylistVideos(playlists[i].playlistId);
         added += r.added;
         playlistsScanned++;
       } catch (e) {
-        log.warn("channel.sync.playlist_failed", { channelId, playlistId: pl.playlistId, error: e instanceof Error ? e.message : String(e) });
+        const msg = e instanceof Error ? e.message : String(e);
+        log.warn("channel.sync.playlist_failed", { channelId, playlistId: playlists[i].playlistId, error: msg });
+        // Back off entirely once YouTube starts rate-limiting us.
+        if (msg.includes("429")) break;
       }
+      if (i < playlists.length - 1) await Bun.sleep(PLAYLIST_SYNC_DELAY_MS);
     }
   } catch (e) {
     log.warn("channel.sync.playlists_failed", { channelId, error: e instanceof Error ? e.message : String(e) });

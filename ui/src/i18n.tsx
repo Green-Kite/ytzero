@@ -515,23 +515,28 @@ export function formatViewsCount(views: number | null, language: Language): stri
 
 export function formatTimeAgo(iso: string | null, language: Language): string {
   if (!iso) return "";
-  const locale = language === "pl" ? "pl-PL" : "en-US";
   const diff = Date.now() - new Date(iso).getTime();
   const min = Math.floor(diff / 60_000);
+  const h = Math.floor(min / 60);
+  const d = Math.floor(h / 24);
+  const mo = Math.floor(d / 30);
+  const y = Math.floor(d / 365);
   if (language === "pl") {
+    const plPlural = (n: number, one: string, few: string, many: string) => {
+      const r = new Intl.PluralRules("pl").select(n);
+      return r === "one" ? one : r === "few" ? few : many;
+    };
     if (min < 60) return `${min} min temu`;
-    const h = Math.floor(min / 60);
     if (h < 24) return `${h} godz. temu`;
-    const d = Math.floor(h / 24);
-    if (d < 30) return `${d} dni temu`;
-    return new Date(iso).toLocaleDateString(locale);
+    if (d < 30) return `${d} ${plPlural(d, "dzień", "dni", "dni")} temu`;
+    if (mo < 12) return `${mo} ${plPlural(mo, "miesiąc", "miesiące", "miesięcy")} temu`;
+    return `${y} ${plPlural(y, "rok", "lata", "lat")} temu`;
   }
   if (min < 60) return `${min}m ago`;
-  const h = Math.floor(min / 60);
   if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
   if (d < 30) return `${d}d ago`;
-  return new Date(iso).toLocaleDateString(locale);
+  if (mo < 12) return `${mo} month${mo === 1 ? "" : "s"} ago`;
+  return `${y} year${y === 1 ? "" : "s"} ago`;
 }
 
 export function compactNumber(value: number | null, language: Language): string {

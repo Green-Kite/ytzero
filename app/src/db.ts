@@ -132,6 +132,16 @@ try { db.exec("ALTER TABLE videos ADD COLUMN liked INTEGER"); } catch {}
 try { db.exec("ALTER TABLE tags ADD COLUMN filter_only INTEGER NOT NULL DEFAULT 0"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN external INTEGER NOT NULL DEFAULT 0"); } catch {}
 try { db.exec("ALTER TABLE channels ADD COLUMN external INTEGER NOT NULL DEFAULT 0"); } catch {}
+// Cached channel "about" payload (description, banner, links, stats, …) so the
+// channel page reads from the DB instead of scraping YouTube on every visit.
+try { db.exec("ALTER TABLE channels ADD COLUMN about_json TEXT"); } catch {}
+try { db.exec("ALTER TABLE channels ADD COLUMN about_fetched_at TEXT"); } catch {}
+// Cached channel playlists and per-video chapters — same idea: read from the DB
+// instead of scraping YouTube on every request.
+try { db.exec("ALTER TABLE channels ADD COLUMN playlists_json TEXT"); } catch {}
+try { db.exec("ALTER TABLE channels ADD COLUMN playlists_fetched_at TEXT"); } catch {}
+try { db.exec("ALTER TABLE videos ADD COLUMN chapters_json TEXT"); } catch {}
+try { db.exec("ALTER TABLE videos ADD COLUMN chapters_fetched_at TEXT"); } catch {}
 db.exec("UPDATE videos SET bucket = 'today' WHERE bucket = 'morning';");
 db.exec("UPDATE videos SET bucket = 'tonight' WHERE bucket = 'evening';");
 
