@@ -14,7 +14,7 @@ import {
   searchYouTube,
 } from "./youtube";
 import { getCachedImage } from "./imgcache";
-import { refreshAll, refreshChannel, refreshLiveStatus, syncChannel } from "./refresher";
+import { importPlaylistVideos, refreshAll, refreshChannel, refreshLiveStatus, syncChannel } from "./refresher";
 import { applyRuleToAllVideos } from "./autotags";
 import { applyPlaylistRuleToAllVideos, applyPlaylistRulesForPlaylist } from "./userPlaylists";
 import { applyFilterRuleToAll } from "./filterRules";
@@ -684,7 +684,13 @@ api.get("/channels/:id/about", async (c) => {
       const upd = db.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND duration IS NULL");
       for (const d of durations) upd.run(d.duration, d.videoId);
     }).catch(() => {});
-    return c.json(about);
+    // Real counts from our own data — stable regardless of how many pages the
+    // UI has loaded (NULL is_short counts as a regular video, matching the UI).
+    const row = db.prepare(
+      "SELECT COUNT(*) AS total, COALESCE(SUM(is_short = 1), 0) AS shorts FROM videos WHERE channel_id = ?"
+    ).get(channelId) as { total: number; shorts: number };
+    const counts = { videos: row.total - row.shorts, shorts: row.shorts };
+    return c.json({ ...about, counts });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
   }
@@ -866,7 +872,12 @@ api.post("/playlists/:id/rules/apply", (c) => {
 
 api.get("/playlists/:id/videos", async (c) => {
   try {
-    return c.json({ videos: await fetchPlaylistVideos(c.req.param("id")) });
+    const id = c.req.param("id");
+    // Import all playlist videos into the owning channel (deduped) on load,
+    // then return them for the player. Both calls share a cached feed fetch.
+    const videos = await fetchPlaylistVideos(id);
+    importPlaylistVideos(id).catch((e) => log.error("playlist.import.failed", { playlistId: id, error: e instanceof Error ? e.message : String(e) }));
+    return c.json({ videos });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
   }

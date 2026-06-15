@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { checkIsShort, fetchChannelAbout, fetchChannelFeed, fetchChannelVideos, fetchChannelVideosDurations, fetchLiveInfo, fetchVideoInfo } from "./youtube";
+import { checkIsShort, fetchChannelAbout, fetchChannelFeed, fetchChannelPlaylists, fetchChannelVideos, fetchChannelVideosDurations, fetchLiveInfo, fetchPlaylistFeed, fetchVideoInfo } from "./youtube";
 import { applyAutoTags } from "./autotags";
 import { applyPlaylistRulesToVideo } from "./userPlaylists";
 import { applyFilterRules } from "./filterRules";
@@ -18,6 +18,57 @@ const upsertVideo = db.prepare(`
 `);
 
 const videoExists = db.prepare("SELECT 1 FROM videos WHERE video_id = ?");
+
+// Insert-only: never clobber an existing video's richer fields (e.g. a real
+// upload's description) with the sparse data a playlist feed carries.
+const insertPlaylistVideo = db.prepare(`
+  INSERT OR IGNORE INTO videos (video_id, channel_id, title, description, thumbnail, published_at, views, likes)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+`);
+
+const ensureChannel = db.prepare(`
+  INSERT INTO channels (channel_id, title, url, thumbnail, followed, external)
+  VALUES (?, ?, ?, '', 0, 1)
+  ON CONFLICT(channel_id) DO NOTHING
+`);
+
+/**
+ * Import every video from a playlist feed into the owning channel, skipping
+ * duplicates. New videos get the same tagging/rule treatment as RSS uploads.
+ * The channel row is created (as external) when not already present.
+ */
+export async function importPlaylistVideos(playlistId: string): Promise<{ added: number; channelId: string }> {
+  const feed = await fetchPlaylistFeed(playlistId);
+  if (!feed.channelId) return { added: 0, channelId: "" };
+
+  ensureChannel.run(feed.channelId, feed.channelTitle, `https://www.youtube.com/channel/${feed.channelId}`);
+  const inheritChannelTags = db.prepare(
+    "INSERT OR IGNORE INTO video_tags (video_id, tag_id, source) SELECT ?, tag_id, 'channel' FROM channel_tags WHERE channel_id = ?"
+  );
+
+  let added = 0;
+  const importAll = db.transaction((videos: typeof feed.videos) => {
+    for (const v of videos) {
+      const res = insertPlaylistVideo.run(
+        v.videoId, feed.channelId, v.title, v.description, v.thumbnail, v.publishedAt, v.views, v.likes
+      );
+      if (res.changes > 0) {
+        applyAutoTags(v.videoId, v.title, v.description);
+        applyFilterRules(v.videoId, feed.channelId, v.title, v.description);
+        applyPlaylistRulesToVideo(v.videoId);
+        inheritChannelTags.run(v.videoId, feed.channelId);
+        added++;
+      }
+    }
+  });
+  importAll(feed.videos);
+
+  if (added > 0) {
+    backfillShorts(feed.videos.map((v) => v.videoId)).catch(() => {});
+    log.info("playlist.import.added", { playlistId, channelId: feed.channelId, added });
+  }
+  return { added, channelId: feed.channelId };
+}
 
 export async function refreshChannel(channelId: string): Promise<{ added: number }> {
   const startedAt = Date.now();
@@ -181,8 +232,27 @@ export async function syncChannel(channelId: string): Promise<{ added: number }>
     }
   }
 
+  // Surface videos hidden in the channel's playlists — these include older
+  // uploads that no longer appear in the RSS feed or /videos tab. Each
+  // playlist's videos are imported (deduped) into their owning channel.
+  let playlistsScanned = 0;
+  try {
+    const playlists = await fetchChannelPlaylists(channelId);
+    for (const pl of playlists) {
+      try {
+        const r = await importPlaylistVideos(pl.playlistId);
+        added += r.added;
+        playlistsScanned++;
+      } catch (e) {
+        log.warn("channel.sync.playlist_failed", { channelId, playlistId: pl.playlistId, error: e instanceof Error ? e.message : String(e) });
+      }
+    }
+  } catch (e) {
+    log.warn("channel.sync.playlists_failed", { channelId, error: e instanceof Error ? e.message : String(e) });
+  }
+
   db.prepare("UPDATE channels SET last_refreshed_at = datetime('now') WHERE channel_id = ?").run(channelId);
-  log.info("channel.sync.complete", { channelId, added, scraped: scraped.length, rss: feed.videos.length, ms: Date.now() - startedAt });
+  log.info("channel.sync.complete", { channelId, added, scraped: scraped.length, rss: feed.videos.length, playlists: playlistsScanned, ms: Date.now() - startedAt });
   return { added };
 }
 

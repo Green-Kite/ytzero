@@ -82,6 +82,8 @@ export interface ChannelAbout {
   joinedDate: string;
   viewCount: string;
   handle: string;
+  /** Real video/short counts from our DB (independent of UI pagination). */
+  counts?: { videos: number; shorts: number };
 }
 
 export interface PlaylistInfo {

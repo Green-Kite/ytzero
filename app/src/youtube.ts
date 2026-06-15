@@ -353,7 +353,15 @@ export interface PlaylistVideo {
   index: number;
 }
 
-const playlistVideoCache = new Map<string, { at: number; data: PlaylistVideo[] }>();
+const playlistFeedCache = new Map<string, { at: number; data: PlaylistFeed }>();
+
+export interface PlaylistFeed {
+  playlistId: string;
+  /** Channel that owns the playlist (from the feed's top-level yt:channelId). */
+  channelId: string;
+  channelTitle: string;
+  videos: FeedVideo[];
+}
 
 export interface VideoDuration { videoId: string; duration: string; }
 
@@ -370,29 +378,61 @@ export async function fetchChannelVideosDurations(channelId: string): Promise<Vi
   return out;
 }
 
-export async function fetchPlaylistVideos(playlistId: string): Promise<PlaylistVideo[]> {
-  const cached = playlistVideoCache.get(playlistId);
+/**
+ * Fetch a playlist via its RSS feed (`?playlist_id=`), which shares the Atom
+ * format used by channel feeds. More reliable than scraping the playlist page,
+ * but capped at ~15 entries and without per-video duration.
+ */
+export async function fetchPlaylistFeed(playlistId: string): Promise<PlaylistFeed> {
+  const cached = playlistFeedCache.get(playlistId);
   if (cached && Date.now() - cached.at < ABOUT_TTL) return cached.data;
 
-  const res = await fetch(`https://www.youtube.com/playlist?list=${playlistId}`, { headers: FETCH_HEADERS });
-  if (!res.ok) throw new Error(`playlist fetch failed (${res.status})`);
-  const data = extractInitialData(await res.text());
-  const out: PlaylistVideo[] = [];
+  const url = `https://www.youtube.com/feeds/videos.xml?playlist_id=${playlistId}`;
+  const res = await fetch(url, { headers: FETCH_HEADERS });
+  if (!res.ok) throw new Error(`playlist feed fetch failed (${res.status})`);
+  const doc = xml.parse(await res.text());
+  const feed = doc.feed ?? {};
+  const videos: FeedVideo[] = asArray(feed.entry)
+    .map((e: any): FeedVideo => {
+      const community = e["media:group"]?.["media:community"];
+      const views = Number(community?.["media:statistics"]?.["@_views"]);
+      const likes = Number(community?.["media:starRating"]?.["@_count"]);
+      const videoId = e["yt:videoId"] ?? "";
+      return {
+        videoId,
+        title: String(e["media:group"]?.["media:title"] ?? e.title ?? ""),
+        description: String(e["media:group"]?.["media:description"] ?? ""),
+        thumbnail:
+          e["media:group"]?.["media:thumbnail"]?.["@_url"] ??
+          `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+        publishedAt: e.published ?? "",
+        views: Number.isFinite(views) ? views : null,
+        likes: Number.isFinite(likes) ? likes : null,
+      };
+    })
+    .filter((v) => v.videoId);
 
-  for (const r of deepCollect(data, "playlistVideoRenderer")) {
-    if (!r?.videoId) continue;
-    out.push({
-      videoId: r.videoId,
-      title: r.title?.runs?.[0]?.text ?? r.title?.simpleText ?? "",
-      thumbnail: r.thumbnail?.thumbnails?.at(-1)?.url ?? `https://i.ytimg.com/vi/${r.videoId}/hqdefault.jpg`,
-      channelTitle: r.shortBylineText?.runs?.[0]?.text ?? "",
-      duration: r.lengthText?.simpleText ?? "",
-      index: Number(r.index?.simpleText ?? out.length),
-    });
-  }
+  const data: PlaylistFeed = {
+    playlistId,
+    channelId: String(feed["yt:channelId"] ?? ""),
+    channelTitle: String(feed.author?.name ?? feed.title ?? ""),
+    videos,
+  };
+  playlistFeedCache.set(playlistId, { at: Date.now(), data });
+  return data;
+}
 
-  playlistVideoCache.set(playlistId, { at: Date.now(), data: out });
-  return out;
+/** Playlist videos shaped for the watch-page sidebar (no duration in RSS). */
+export async function fetchPlaylistVideos(playlistId: string): Promise<PlaylistVideo[]> {
+  const feed = await fetchPlaylistFeed(playlistId);
+  return feed.videos.map((v, i) => ({
+    videoId: v.videoId,
+    title: v.title,
+    thumbnail: v.thumbnail,
+    channelTitle: feed.channelTitle,
+    duration: "",
+    index: i,
+  }));
 }
 
 export interface ScrapedVideo {

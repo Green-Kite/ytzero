@@ -19,7 +19,7 @@ import {
   ThumbsUp,
   Undo2,
 } from "lucide-react";
-import { api, type AppSettings, type Bucket, type SponsorSegment, type UserPlaylist, type Video, type VideoChapter, type VideoInfo, SB_CATEGORIES } from "../api";
+import { api, type AppSettings, type Bucket, type PlaylistVideo, type SponsorSegment, type UserPlaylist, type Video, type VideoChapter, type VideoInfo, SB_CATEGORIES } from "../api";
 import { compactNumber, formatTimeAgo, formatViewsCount, useI18n } from "../i18n";
 import TagChip from "../components/TagChip";
 import { PlaylistIcon, PlaylistIconPicker } from "../components/PlaylistIcon";
@@ -81,7 +81,7 @@ function Linkify({ text }: { text: string }) {
 
 export default function WatchPage() {
   const { t, bucketLabel, language, locale } = useI18n();
-  const { id } = useParams<{ id: string }>();
+  const { id, playlistId } = useParams<{ id: string; playlistId?: string }>();
   const navigate = useNavigate();
   const [video, setVideo] = useState<Video | null>(null);
   const [videoMissing, setVideoMissing] = useState(false);
@@ -101,6 +101,10 @@ export default function WatchPage() {
   const [sbPaused, setSbPaused] = useState(false);
   const [disabledSegs, setDisabledSegs] = useState<Set<string>>(new Set());
   const [chapters, setChapters] = useState<VideoChapter[]>([]);
+  const [playlistVideos, setPlaylistVideos] = useState<PlaylistVideo[]>([]);
+  // Path to the next playlist video, read by the player's onStateChange when a
+  // video ends. A ref keeps the player effect free of playlist dependencies.
+  const nextInPlaylistRef = useRef<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const playlistMenuRef = useRef<HTMLDivElement>(null);
   const likeButtonRef = useRef<HTMLButtonElement>(null);
@@ -137,6 +141,23 @@ export default function WatchPage() {
       .catch(() => { if (!cancelled) setChapters([]); });
     return () => { cancelled = true; };
   }, [id]);
+
+  useEffect(() => {
+    if (!playlistId) { setPlaylistVideos([]); return; }
+    let cancelled = false;
+    api.playlistVideos(playlistId)
+      .then((r) => { if (!cancelled) setPlaylistVideos(r.videos); })
+      .catch(() => { if (!cancelled) setPlaylistVideos([]); });
+    return () => { cancelled = true; };
+  }, [playlistId]);
+
+  const playlistIndex = playlistId ? playlistVideos.findIndex((v) => v.videoId === id) : -1;
+
+  // Keep the "next video" target in sync for the player's end-of-video handler.
+  useEffect(() => {
+    const next = playlistIndex >= 0 ? playlistVideos[playlistIndex + 1] : undefined;
+    nextInPlaylistRef.current = next ? `/watch/${next.videoId}/playlist/${playlistId}` : null;
+  }, [playlistIndex, playlistVideos, playlistId]);
 
   useEffect(() => {
     if (!video || settings?.sponsorblock_enabled !== "1") {
@@ -243,6 +264,14 @@ export default function WatchPage() {
         width: "100%",
         height: "100%",
         playerVars,
+        events: {
+          onStateChange: (e: any) => {
+            // 0 === ended: advance to the next playlist video when in a playlist.
+            if (e?.data === 0 && nextInPlaylistRef.current) {
+              navigate(nextInPlaylistRef.current);
+            }
+          },
+        },
       });
 
       pollInterval = setInterval(() => {
@@ -741,6 +770,40 @@ export default function WatchPage() {
       </div>
 
       <aside>
+        {playlistId && playlistVideos.length > 0 && (
+          <div className="watch-playlist-panel">
+            <div className="watch-playlist-head">
+              <span className="watch-playlist-title">{t("playlist")}</span>
+              <span className="watch-playlist-count">
+                {playlistIndex >= 0 ? playlistIndex + 1 : 1} / {playlistVideos.length}
+              </span>
+            </div>
+            <div className="playlist-items">
+              {playlistVideos.map((v, i) => (
+                <Link
+                  key={v.videoId}
+                  to={`/watch/${v.videoId}/playlist/${playlistId}`}
+                  className={`playlist-item${v.videoId === id ? " active" : ""}`}
+                >
+                  <span className="playlist-item-num">{i + 1}</span>
+                  <div className="playlist-item-thumb">
+                    <img src={img(v.thumbnail)} alt="" loading="lazy" />
+                    {v.duration && <span className="playlist-item-dur">{v.duration}</span>}
+                    {v.videoId === id && (
+                      <span className="playlist-item-playing">
+                        <Play size={12} fill="currentColor" />
+                      </span>
+                    )}
+                  </div>
+                  <div className="playlist-item-info">
+                    <div className="playlist-item-title">{v.title}</div>
+                    {v.channelTitle && <div className="playlist-item-ch">{v.channelTitle}</div>}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
         <h2 className="related-title">{t("moreLikeThis")}</h2>
         {related.filter((v) => v.is_short !== 1).map((v) => (
           <div key={v.video_id} className="related-item" onClick={() => navigate(`/watch/${v.video_id}`)}>

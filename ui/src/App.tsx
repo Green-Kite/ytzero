@@ -12,7 +12,6 @@ import ArchivePage from "./pages/ArchivePage";
 import SettingsPage from "./pages/SettingsPage";
 import WatchPage from "./pages/WatchPage";
 import ChannelPage from "./pages/ChannelPage";
-import PlaylistPage from "./pages/PlaylistPage";
 import UserPlaylistPage from "./pages/UserPlaylistPage";
 import ShortsPage from "./pages/ShortsPage";
 import SubscriptionsPage from "./pages/SubscriptionsPage";
@@ -317,9 +316,9 @@ export default function App() {
               <Route path="/shorts" element={<ShortsPage />} />
               <Route path="/live" element={<LivePage onPlay={play} />} />
               <Route path="/watch/:id" element={<WatchPage />} />
+              <Route path="/watch/:id/playlist/:playlistId" element={<WatchPage />} />
               <Route path="/channel/:id" element={<ChannelPage onPlay={play} />} />
               <Route path="/subscriptions" element={<SubscriptionsPage />} />
-              <Route path="/playlist/:id" element={<PlaylistPage />} />
               <Route path="/playlists/:id" element={<UserPlaylistPage onPlay={play} />} />
               <Route path="/watchlist" element={<WatchlistPage onPlay={play} />} />
               <Route path="/liked" element={<LikedPage onPlay={play} />} />
