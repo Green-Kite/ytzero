@@ -45,7 +45,7 @@ export default function HistoryPage({ onPlay }: { onPlay: (v: Video) => void }) 
         <>
           <div className="video-grid">
             {videos.map((v) => (
-              <VideoCard key={`${v.history_id ?? v.video_id}`} video={v} onPlay={onPlay} onChanged={() => { setPage(0); load(0); }} />
+              <VideoCard key={`${v.history_id ?? v.video_id}`} video={v} onPlay={onPlay} onChanged={() => { setPage(0); load(0); }} showWatchProgress />
             ))}
           </div>
           {loadingMore && <VideoGridSkeleton count={4} />}

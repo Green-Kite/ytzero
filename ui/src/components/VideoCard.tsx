@@ -71,6 +71,7 @@ export default function VideoCard({
   onRemoveFromPlaylist,
   isWatched,
   isLiked,
+  showWatchProgress,
 }: {
   video: Video;
   onPlay: (v: Video) => void;
@@ -80,6 +81,7 @@ export default function VideoCard({
   onRemoveFromPlaylist?: (videoId: string) => Promise<unknown>;
   isWatched?: boolean;
   isLiked?: boolean;
+  showWatchProgress?: boolean;
 }) {
   const { t, bucketLabel, language } = useI18n();
   const instanceId = useId();
@@ -299,7 +301,7 @@ export default function VideoCard({
           {video.duration && video.is_short !== 1 && (
             <span className="duration-badge">{video.duration}</span>
           )}
-          {video.watch_position != null && video.watch_duration != null && video.watch_duration > 0 && video.status !== "archived" && (
+          {video.watch_position != null && video.watch_duration != null && video.watch_duration > 0 && (video.status !== "archived" || showWatchProgress) && (
             <div className="progress-bar">
               <div
                 className="progress-bar-fill"
@@ -379,13 +381,11 @@ export default function VideoCard({
             <div className="v-title" onClick={() => onPlay(video)}>
               {video.title}
             </div>
-            <div className="v-meta">
-              <Link to={`/channel/${video.channel_id}`} className="channel-link">
+            <div className="v-channel-meta">
+              <Link to={`/channel/${video.channel_id}`} className="v-channel">
                 {video.channel_title}
               </Link>
-              <span>·</span>
-              <span>{formatTimeAgo(video.published_at, language)}</span>
-              {video.bucket && <span className="bucket-label">{bucketLabel(video.bucket)}</span>}
+              <span className="v-time">{formatTimeAgo(video.published_at, language)}</span>
             </div>
           </div>
         </div>

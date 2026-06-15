@@ -2,12 +2,15 @@ import { Hono } from "hono";
 import { db, getSetting, setSetting, SETTING_DEFAULTS } from "./db";
 import {
   fetchChannelAbout,
+  fetchChannelFeed,
   fetchChannelPlaylists,
   fetchChannelVideosDurations,
   fetchPlaylistVideos,
+  fetchVideoInfo,
   parseOpml,
   parseTakeoutCsv,
   resolveChannelId,
+  searchYouTube,
 } from "./youtube";
 import { getCachedImage } from "./imgcache";
 import { refreshAll, refreshChannel, refreshLiveStatus, syncChannel } from "./refresher";
@@ -179,7 +182,7 @@ function tagFilterSql(tagIds: number[]) {
 const BASE_SELECT = `
   SELECT v.video_id, v.channel_id, v.title, v.description, v.thumbnail,
          v.published_at, v.live_status, v.status, v.bucket, v.show_from, v.is_short, v.views, v.likes, v.liked,
-         v.duration, v.watch_position, v.watch_duration,
+         v.duration, v.watch_position, v.watch_duration, v.external,
          EXISTS(SELECT 1 FROM history h WHERE h.video_id = v.video_id) AS in_history,
          c.title AS channel_title, c.thumbnail AS channel_thumbnail, c.subscriber_count AS channel_subscriber_count
   FROM videos v JOIN channels c ON c.channel_id = v.channel_id`;
@@ -237,6 +240,7 @@ api.get("/feed", (c) => {
     params.push(channel);
   } else {
     where.push("c.followed = 1");
+    where.push("v.external = 0");
   }
   if (q) {
     where.push("(v.title LIKE ? OR v.description LIKE ?)");
@@ -272,6 +276,32 @@ api.get("/feed", (c) => {
   return c.json({ videos: attachTags(rows), page, limit });
 });
 
+api.get("/in-progress", (c) => {
+  const rows = db.prepare(`
+    ${BASE_SELECT}
+    JOIN (SELECT video_id, MAX(watched_at) AS last_watched FROM history GROUP BY video_id) lw ON lw.video_id = v.video_id
+    WHERE v.watch_position IS NOT NULL AND v.watch_duration IS NOT NULL
+      AND v.watch_duration > 30
+      AND v.watch_position >= 3
+      AND CAST(v.watch_position AS REAL) / v.watch_duration < 0.92
+      AND v.status = 'inbox'
+      AND c.followed = 1
+    ORDER BY lw.last_watched DESC
+    LIMIT 20
+  `).all() as VideoRow[];
+  return c.json({ videos: attachTags(rows) });
+});
+
+api.get("/search/youtube", async (c) => {
+  const q = c.req.query("q");
+  if (!q?.trim()) return c.json({ results: [] });
+  try {
+    return c.json({ results: await searchYouTube(q.trim()) });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
+  }
+});
+
 api.get("/live", (c) => {
   const rows = db
     .prepare(`${BASE_SELECT} WHERE v.live_status IN ('live','upcoming') ORDER BY v.live_status = 'live' DESC, v.published_at DESC`)
@@ -292,6 +322,98 @@ api.get("/archive", (c) => {
     .prepare(`${BASE_SELECT} WHERE v.status = 'archived' ORDER BY v.published_at DESC LIMIT 60 OFFSET ?`)
     .all(page * 60) as VideoRow[];
   return c.json({ videos: attachTags(rows), page });
+});
+
+// External ("orphan") videos pulled in for one-off watching: anything that
+// belongs to an external channel (not followed, brought in just to watch).
+// Watched ones (with a saved position) float to the top.
+api.get("/external", (c) => {
+  const rows = db
+    .prepare(`${BASE_SELECT} WHERE c.external = 1
+      ORDER BY (v.watch_position IS NOT NULL) DESC, v.created_at DESC LIMIT 200`)
+    .all() as VideoRow[];
+  return c.json({ videos: attachTags(rows) });
+});
+
+// Clear orphan externals. Protects anything the user actively saved
+// (queued, liked or added to a playlist), then drops now-empty external channels.
+api.delete("/external", (c) => {
+  const res = db.prepare(`
+    DELETE FROM videos
+    WHERE channel_id IN (SELECT channel_id FROM channels WHERE external = 1)
+      AND status != 'queued'
+      AND COALESCE(liked, 0) = 0
+      AND video_id NOT IN (SELECT video_id FROM user_playlist_videos)
+  `).run();
+  db.prepare(`
+    DELETE FROM channels
+    WHERE external = 1 AND channel_id NOT IN (SELECT DISTINCT channel_id FROM videos)
+  `).run();
+  return c.json({ deleted: res.changes });
+});
+
+// Remove a single external video, then drop its channel if now empty + external.
+api.delete("/external/:id", (c) => {
+  const id = c.req.param("id");
+  const res = db.prepare(`
+    DELETE FROM videos
+    WHERE video_id = ?
+      AND channel_id IN (SELECT channel_id FROM channels WHERE external = 1)
+  `).run(id);
+  db.prepare(`
+    DELETE FROM channels
+    WHERE external = 1 AND channel_id NOT IN (SELECT DISTINCT channel_id FROM videos)
+  `).run();
+  return c.json({ deleted: res.changes });
+});
+
+api.get("/videos/:id/info", async (c) => {
+  try {
+    const info = await fetchVideoInfo(c.req.param("id"));
+    // Channel avatar + the channel's recent uploads (for the "related" panel).
+    const [about, feed] = await Promise.all([
+      fetchChannelAbout(info.channelId).catch(() => null),
+      fetchChannelFeed(info.channelId).catch(() => null),
+    ]);
+    const avatar = about?.avatar ?? "";
+
+    // Upsert channel: insert as external if new, or update avatar if missing
+    db.prepare(`
+      INSERT INTO channels (channel_id, title, url, thumbnail, followed, external)
+      VALUES (?, ?, ?, ?, 0, 1)
+      ON CONFLICT(channel_id) DO UPDATE SET
+        thumbnail = CASE WHEN channels.thumbnail = '' OR channels.thumbnail IS NULL
+                         THEN excluded.thumbnail ELSE channels.thumbnail END
+    `).run(info.channelId, info.channelTitle, `https://www.youtube.com/channel/${info.channelId}`, avatar);
+
+    const insertVideo = db.prepare(`
+      INSERT OR IGNORE INTO videos
+        (video_id, channel_id, title, description, thumbnail, published_at, live_status, status, views, duration, external)
+      VALUES (?, ?, ?, ?, ?, ?, 'none', 'inbox', ?, ?, 1)
+    `);
+
+    // Insert the watched video (no-op if already in DB as a real video)
+    insertVideo.run(
+      info.videoId, info.channelId, info.title, info.description,
+      info.thumbnail, info.publishedAt, info.viewCount, info.duration
+    );
+
+    // Insert the channel's recent uploads as external so the related panel fills.
+    if (feed) {
+      const insertMany = db.transaction((videos: typeof feed.videos) => {
+        for (const v of videos) {
+          insertVideo.run(
+            v.videoId, info.channelId, v.title, v.description,
+            v.thumbnail, v.publishedAt, v.views, null
+          );
+        }
+      });
+      insertMany(feed.videos);
+    }
+    return c.json({ info });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
+  }
 });
 
 api.get("/videos/:id", (c) => {
@@ -360,7 +482,8 @@ api.post("/videos/:id/dequeue", (c) => {
 
 api.post("/videos/:id/watch", (c) => {
   const id = c.req.param("id");
-  db.prepare("INSERT INTO history (video_id) VALUES (?)").run(id);
+  const exists = db.prepare("SELECT 1 FROM videos WHERE video_id = ?").get(id);
+  if (exists) db.prepare("INSERT INTO history (video_id) VALUES (?)").run(id);
   return c.json({ ok: true });
 });
 
@@ -374,6 +497,11 @@ api.put("/videos/:id/progress", async (c) => {
   const id = c.req.param("id");
   const { position, duration } = await c.req.json() as { position: number; duration: number };
   db.prepare("UPDATE videos SET watch_position = ?, watch_duration = ? WHERE video_id = ?").run(position, duration, id);
+  return c.json({ ok: true });
+});
+
+api.delete("/videos/:id/progress", (c) => {
+  db.prepare("UPDATE videos SET watch_position = NULL, watch_duration = NULL WHERE video_id = ?").run(c.req.param("id"));
   return c.json({ ok: true });
 });
 
@@ -403,6 +531,7 @@ api.get("/history", (c) => {
       `SELECT MAX(h.id) AS history_id, MAX(h.watched_at) AS watched_at,
               v.video_id, v.channel_id, v.title, v.description, v.duration,
               v.thumbnail, v.published_at, v.live_status, v.status, v.bucket,
+              v.watch_position, v.watch_duration,
               c.title AS channel_title, c.thumbnail AS channel_thumbnail
        FROM history h JOIN videos v ON v.video_id = h.video_id
        JOIN channels c ON c.channel_id = v.channel_id
@@ -421,7 +550,7 @@ api.delete("/history/:id", (c) => {
 // ---------- channels ----------
 
 api.get("/channels", (c) => {
-  const channels = db.prepare("SELECT * FROM channels ORDER BY title COLLATE NOCASE").all() as any[];
+  const channels = db.prepare("SELECT * FROM channels WHERE external = 0 ORDER BY title COLLATE NOCASE").all() as any[];
   const tags = db
     .prepare(
       `SELECT ct.channel_id, t.id, t.name, t.color FROM channel_tags ct JOIN tags t ON t.id = ct.tag_id`
@@ -511,7 +640,7 @@ api.put("/channels/:id/follow", async (c) => {
 
 // Literal paths before parameterised /channels/:id to avoid shadowing
 api.get("/channels/unfollowed", (c) => {
-  const channels = db.prepare("SELECT * FROM channels WHERE followed = 0 ORDER BY title COLLATE NOCASE").all() as any[];
+  const channels = db.prepare("SELECT * FROM channels WHERE followed = 0 AND external = 0 ORDER BY title COLLATE NOCASE").all() as any[];
   return c.json({ channels });
 });
 

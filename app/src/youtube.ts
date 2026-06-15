@@ -131,17 +131,47 @@ export async function fetchLiveInfo(channelId: string): Promise<LiveInfo | null>
 }
 
 /** Extract the ytInitialData JSON blob embedded in a YouTube page. */
-function extractInitialData(html: string): any | null {
-  const marker = "ytInitialData = ";
-  const start = html.indexOf(marker);
-  if (start < 0) return null;
-  const end = html.indexOf(";</script>", start);
-  if (end < 0) return null;
-  try {
-    return JSON.parse(html.slice(start + marker.length, end));
-  } catch {
-    return null;
+function extractVariable(html: string, name: string): any | null {
+  const marker = `${name} = `;
+  const idx = html.indexOf(marker);
+  if (idx < 0) return null;
+  // Find the start of the JSON object/array.
+  let start = idx + marker.length;
+  const open = html[start];
+  if (open !== "{" && open !== "[") return null;
+  const close = open === "{" ? "}" : "]";
+  // Brace-match while respecting string literals and escapes, because the
+  // surrounding <script> can contain trailing JS after the JSON (e.g.
+  // ytInitialPlayerResponse is followed by more code in the same tag).
+  let depth = 0;
+  let inStr = false;
+  let escaped = false;
+  for (let i = start; i < html.length; i++) {
+    const ch = html[i];
+    if (inStr) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === open) depth++;
+    else if (ch === close) {
+      depth--;
+      if (depth === 0) {
+        try {
+          return JSON.parse(html.slice(start, i + 1));
+        } catch {
+          return null;
+        }
+      }
+    }
   }
+  return null;
+}
+
+function extractInitialData(html: string): any | null {
+  return extractVariable(html, "ytInitialData");
 }
 
 /** Collect every value stored under the given key anywhere in a JSON tree. */
@@ -345,6 +375,94 @@ export async function fetchChannelVideos(channelId: string): Promise<ScrapedVide
     });
   }
   return out;
+}
+
+export interface SearchResult {
+  videoId: string;
+  title: string;
+  thumbnail: string;
+  duration: string;
+  channelTitle: string;
+  viewCount: number | null;
+}
+
+const searchCache = new Map<string, { at: number; data: SearchResult[] }>();
+const SEARCH_TTL = 5 * 60_000;
+
+export async function searchYouTube(query: string): Promise<SearchResult[]> {
+  const cached = searchCache.get(query);
+  if (cached && Date.now() - cached.at < SEARCH_TTL) return cached.data;
+
+  const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+  const res = await fetch(url, { headers: FETCH_HEADERS });
+  if (!res.ok) throw new Error(`YouTube search failed (${res.status})`);
+  const data = extractInitialData(await res.text());
+  const out: SearchResult[] = [];
+  for (const r of deepCollect(data, "videoRenderer")) {
+    if (!r?.videoId) continue;
+    const viewStr = r?.viewCountText?.simpleText ?? r?.viewCountText?.runs?.[0]?.text ?? "";
+    const viewNum = parseInt(viewStr.replace(/\D/g, ""), 10);
+    out.push({
+      videoId: r.videoId,
+      title: r.title?.runs?.[0]?.text ?? r.title?.simpleText ?? "",
+      thumbnail: r.thumbnail?.thumbnails?.at(-1)?.url ?? `https://i.ytimg.com/vi/${r.videoId}/hqdefault.jpg`,
+      duration: r.lengthText?.simpleText ?? "",
+      channelTitle: r.shortBylineText?.runs?.[0]?.text ?? "",
+      viewCount: Number.isFinite(viewNum) && viewNum > 0 ? viewNum : null,
+    });
+  }
+  const result = out.slice(0, 20);
+  searchCache.set(query, { at: Date.now(), data: result });
+  return result;
+}
+
+export interface VideoInfo {
+  videoId: string;
+  title: string;
+  channelId: string;
+  channelTitle: string;
+  description: string;
+  thumbnail: string;
+  viewCount: number | null;
+  publishedAt: string | null;
+  duration: string | null;
+}
+
+const videoInfoCache = new Map<string, { at: number; data: VideoInfo }>();
+const VIDEO_INFO_TTL = 10 * 60_000;
+
+export async function fetchVideoInfo(videoId: string): Promise<VideoInfo> {
+  const cached = videoInfoCache.get(videoId);
+  if (cached && Date.now() - cached.at < VIDEO_INFO_TTL) return cached.data;
+
+  const url = `https://www.youtube.com/watch?v=${videoId}`;
+  const res = await fetch(url, { headers: FETCH_HEADERS });
+  if (!res.ok) throw new Error(`YouTube fetch failed (${res.status})`);
+  const html = await res.text();
+  const pr = extractVariable(html, "ytInitialPlayerResponse");
+  const vd = pr?.videoDetails;
+  if (!vd?.videoId) throw new Error("videoDetails missing");
+
+  const mf = pr?.microformat?.playerMicroformatRenderer;
+  const lengthSec = parseInt(vd.lengthSeconds ?? "", 10);
+  const duration = Number.isFinite(lengthSec) && lengthSec > 0
+    ? `${Math.floor(lengthSec / 60)}:${String(lengthSec % 60).padStart(2, "0")}`
+    : null;
+
+  const result: VideoInfo = {
+    videoId: vd.videoId,
+    title: vd.title ?? "",
+    channelId: vd.channelId ?? "",
+    channelTitle: vd.author ?? mf?.ownerChannelName ?? "",
+    description: vd.shortDescription ?? "",
+    thumbnail: vd.thumbnail?.thumbnails?.at(-1)?.url
+      ?? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+    viewCount: parseInt(vd.viewCount ?? "", 10) || null,
+    publishedAt: mf?.publishDate ?? null,
+    duration,
+  };
+  videoInfoCache.set(videoId, { at: Date.now(), data: result });
+  return result;
 }
 
 /**

@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { checkIsShort, fetchChannelAbout, fetchChannelFeed, fetchChannelVideos, fetchLiveInfo } from "./youtube";
+import { checkIsShort, fetchChannelAbout, fetchChannelFeed, fetchChannelVideos, fetchChannelVideosDurations, fetchLiveInfo } from "./youtube";
 import { applyAutoTags } from "./autotags";
 import { applyPlaylistRulesToVideo } from "./userPlaylists";
 import { applyFilterRules } from "./filterRules";
@@ -37,6 +37,17 @@ export async function refreshChannel(channelId: string): Promise<{ added: number
     }
   }
   await backfillShorts(feed.videos.map((v) => v.videoId));
+
+  const missingDuration = db.prepare(
+    "SELECT 1 FROM videos WHERE channel_id = ? AND duration IS NULL AND live_status = 'none' LIMIT 1"
+  ).get(channelId);
+  if (missingDuration) {
+    fetchChannelVideosDurations(channelId).then((durations) => {
+      const upd = db.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND duration IS NULL");
+      for (const d of durations) upd.run(d.duration, d.videoId);
+    }).catch(() => {});
+  }
+
   if (feed.channelTitle) {
     db.prepare(
       "UPDATE channels SET title = ?, last_refreshed_at = datetime('now') WHERE channel_id = ? AND title = ''"

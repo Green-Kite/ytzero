@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import { Check, Filter, FolderUp, LoaderCircle, ListMusic, MonitorPlay, Pencil, Plus, ShieldCheck, Tags, Trash2, Tv, UserMinus, UserPlus, X, Zap } from "lucide-react";
-import { api, type Channel, type ChildLockStatus, type FilterRule, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule, SB_CATEGORIES } from "../api";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Check, Clock, Filter, FolderUp, LoaderCircle, ListMusic, MonitorPlay, Pencil, Plus, ShieldCheck, Tags, Trash2, Tv, UserMinus, UserPlus, X, Zap } from "lucide-react";
+import { api, type Channel, type ChildLockStatus, type FilterRule, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES } from "../api";
+import { img } from "../img";
 import TagChip from "../components/TagChip";
 import Tooltip from "../components/Tooltip";
 import { PlaylistIconPicker } from "../components/PlaylistIcon";
@@ -10,13 +11,14 @@ import Popconfirm from "../components/Popconfirm";
 import { emit } from "../events";
 import { formatVideoCount, useI18n, type I18nKey, type Language } from "../i18n";
 
-type Tab = "channels" | "tags" | "playlists" | "display" | "child";
+type Tab = "channels" | "tags" | "playlists" | "display" | "external" | "child";
 
 const TABS: { id: Tab; labelKey: I18nKey; icon: React.ReactNode }[] = [
   { id: "channels", labelKey: "channels", icon: <Tv size={15} /> },
   { id: "tags", labelKey: "tagsRules", icon: <Tags size={15} /> },
   { id: "playlists", labelKey: "playlists", icon: <ListMusic size={15} /> },
   { id: "display", labelKey: "display", icon: <MonitorPlay size={15} /> },
+  { id: "external", labelKey: "navExternal", icon: <Clock size={15} /> },
   { id: "child", labelKey: "child", icon: <ShieldCheck size={15} /> },
 ];
 
@@ -365,6 +367,7 @@ function FilterRuleGroups({ rules, channels, onSave, onRemove }: {
 
 export default function SettingsPage({ showToast }: { showToast: (m: string) => void }) {
   const { t, language, setLanguage } = useI18n();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = (searchParams.get("tab") as Tab) ?? "channels";
   const setTab = (t: Tab) => setSearchParams({ tab: t }, { replace: true });
@@ -379,6 +382,9 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [loading, setLoading] = useState(true);
   const [addingChannel, setAddingChannel] = useState(false);
   const [addingTag, setAddingTag] = useState(false);
+  const [externalVideos, setExternalVideos] = useState<Video[]>([]);
+  const [loadingExternal, setLoadingExternal] = useState(false);
+  const [clearingExternal, setClearingExternal] = useState(false);
 
   const [channelUrl, setChannelUrl] = useState("");
   const [channelQuery, setChannelQuery] = useState("");
@@ -431,6 +437,52 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
       setLoading(false);
     }
   }, []);
+
+  const loadExternal = useCallback(() => {
+    setLoadingExternal(true);
+    api.externalVideos()
+      .then((r) => setExternalVideos(r.videos))
+      .catch(console.error)
+      .finally(() => setLoadingExternal(false));
+  }, []);
+
+  useEffect(() => {
+    if (tab === "external") loadExternal();
+  }, [tab, loadExternal]);
+
+  const clearExternal = async () => {
+    setClearingExternal(true);
+    try {
+      const r = await api.clearExternal();
+      showToast(t("externalCleared").replace("{n}", String(r.deleted)));
+      loadExternal();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : String(e));
+    } finally {
+      setClearingExternal(false);
+    }
+  };
+
+  const removeExternal = async (videoId: string) => {
+    setExternalVideos((vs) => vs.filter((v) => v.video_id !== videoId));
+    try {
+      await api.removeExternal(videoId);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : String(e));
+      loadExternal();
+    }
+  };
+
+  const removeExternalChannel = async (channelId: string) => {
+    const ids = externalVideos.filter((v) => v.channel_id === channelId).map((v) => v.video_id);
+    setExternalVideos((vs) => vs.filter((v) => v.channel_id !== channelId));
+    try {
+      await Promise.all(ids.map((id) => api.removeExternal(id)));
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : String(e));
+      loadExternal();
+    }
+  };
 
   useEffect(() => {
     load().catch(console.error);
@@ -1229,6 +1281,88 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
               })}
             </div>
           )}
+        </section>
+      )}
+
+      {!isSettingsLocked && tab === "external" && (
+        <section className="settings-section">
+          <div className="page-head" style={{ marginBottom: 16 }}>
+            <p className="page-hint" style={{ margin: 0 }}>{t("externalHint")}</p>
+            {externalVideos.length > 0 && (
+              <button className="btn danger" onClick={clearExternal} disabled={clearingExternal}>
+                {clearingExternal ? <LoaderCircle size={15} className="spin" /> : <Trash2 size={15} />}
+                {t("externalClear")}
+              </button>
+            )}
+          </div>
+          {loadingExternal && externalVideos.length === 0 ? (
+            <TableSkeleton />
+          ) : externalVideos.length === 0 ? (
+            <div className="empty-state">
+              <Clock />
+              <div>{t("externalEmpty")}</div>
+            </div>
+          ) : (() => {
+            const byChannel = Object.values(
+              externalVideos.reduce<Record<string, { channel_id: string; channel_title: string; channel_thumbnail: string | null; videos: typeof externalVideos }>>(
+                (acc, v) => {
+                  if (!acc[v.channel_id]) acc[v.channel_id] = { channel_id: v.channel_id, channel_title: v.channel_title, channel_thumbnail: v.channel_thumbnail, videos: [] };
+                  acc[v.channel_id].videos.push(v);
+                  return acc;
+                },
+                {}
+              )
+            );
+            return (
+              <div className="external-groups">
+                {byChannel.map((ch) => (
+                  <div key={ch.channel_id} className="external-group">
+                    <div className="external-group-header">
+                      {ch.channel_thumbnail ? (
+                        <img className="external-ch-avatar" src={img(ch.channel_thumbnail)} alt="" />
+                      ) : (
+                        <div className="external-ch-avatar external-ch-avatar-fallback">
+                          {ch.channel_title.charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <span className="external-ch-name">{ch.channel_title}</span>
+                      <button
+                        className="btn danger"
+                        onClick={() => removeExternalChannel(ch.channel_id)}
+                        style={{ marginLeft: "auto", flexShrink: 0 }}
+                      >
+                        <Trash2 size={14} />
+                        {t("externalClearChannel")}
+                      </button>
+                    </div>
+                    <div className="external-video-list">
+                      {ch.videos.map((v) => (
+                        <div key={v.video_id} className="external-video-row">
+                          <img
+                            className="external-thumb"
+                            src={img(v.thumbnail)}
+                            alt=""
+                            loading="lazy"
+                            onClick={() => navigate(`/watch/${v.video_id}`)}
+                          />
+                          <div className="external-title-cell" onClick={() => navigate(`/watch/${v.video_id}`)}>
+                            {v.title}
+                          </div>
+                          <button
+                            className="icon-btn danger"
+                            title={t("delete")}
+                            onClick={() => removeExternal(v.video_id)}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </section>
       )}
 

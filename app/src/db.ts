@@ -130,6 +130,8 @@ try { db.exec("ALTER TABLE channels ADD COLUMN avatar_checked_at TEXT"); } catch
 try { db.exec("ALTER TABLE videos ADD COLUMN show_from TEXT"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN liked INTEGER"); } catch {}
 try { db.exec("ALTER TABLE tags ADD COLUMN filter_only INTEGER NOT NULL DEFAULT 0"); } catch {}
+try { db.exec("ALTER TABLE videos ADD COLUMN external INTEGER NOT NULL DEFAULT 0"); } catch {}
+try { db.exec("ALTER TABLE channels ADD COLUMN external INTEGER NOT NULL DEFAULT 0"); } catch {}
 db.exec("UPDATE videos SET bucket = 'today' WHERE bucket = 'morning';");
 db.exec("UPDATE videos SET bucket = 'tonight' WHERE bucket = 'evening';");
 

@@ -26,6 +26,7 @@ export interface Video {
   watch_position: number | null;
   watch_duration: number | null;
   in_history: number;
+  external?: number;
   liked: number | null;
   channel_title: string;
   channel_thumbnail: string | null;
@@ -121,6 +122,27 @@ export interface AppSettings {
   sponsorblock_categories: string;
 }
 
+export interface SearchResult {
+  videoId: string;
+  title: string;
+  thumbnail: string;
+  duration: string;
+  channelTitle: string;
+  viewCount: number | null;
+}
+
+export interface VideoInfo {
+  videoId: string;
+  title: string;
+  channelId: string;
+  channelTitle: string;
+  description: string;
+  thumbnail: string;
+  viewCount: number | null;
+  publishedAt: string | null;
+  duration: string | null;
+}
+
 export interface SponsorSegment {
   category: string;
   actionType: string;
@@ -189,6 +211,12 @@ export const api = {
     if (p.limit) qs.set("limit", String(p.limit));
     return http<{ videos: Video[] }>(`/feed?${qs}`);
   },
+  inProgress: () => http<{ videos: Video[] }>("/in-progress"),
+  youtubeSearch: (q: string) => http<{ results: SearchResult[] }>(`/search/youtube?q=${encodeURIComponent(q)}`),
+  videoInfo: (id: string) => http<{ info: VideoInfo }>(`/videos/${id}/info`),
+  externalVideos: () => http<{ videos: Video[] }>("/external"),
+  clearExternal: () => http<{ deleted: number }>("/external", { method: "DELETE" }),
+  removeExternal: (id: string) => http<{ deleted: number }>(`/external/${id}`, { method: "DELETE" }),
   live: () => http<{ videos: Video[] }>("/live"),
   video: (id: string) => http<{ video: Video; related: Video[] }>(`/videos/${id}`),
   watchlist: () => http<{ videos: Video[] }>("/watchlist"),
@@ -199,6 +227,7 @@ export const api = {
     http(`/videos/${id}/queue`, { method: "POST", body: JSON.stringify({ bucket }) }),
   saveProgress: (id: string, position: number, duration: number) =>
     http(`/videos/${id}/progress`, { method: "PUT", body: JSON.stringify({ position, duration }) }),
+  clearProgress: (id: string) => http(`/videos/${id}/progress`, { method: "DELETE" }),
   dequeue: (id: string) => http(`/videos/${id}/dequeue`, { method: "POST" }),
   archiveVideo: (id: string) => http(`/videos/${id}/archive`, { method: "POST" }),
   restore: (id: string) => http(`/videos/${id}/restore`, { method: "POST" }),

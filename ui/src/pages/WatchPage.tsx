@@ -14,7 +14,7 @@ import {
   ThumbsUp,
   Undo2,
 } from "lucide-react";
-import { api, type AppSettings, type Bucket, type SponsorSegment, type UserPlaylist, type Video, SB_CATEGORIES } from "../api";
+import { api, type AppSettings, type Bucket, type SponsorSegment, type UserPlaylist, type Video, type VideoInfo, SB_CATEGORIES } from "../api";
 import { compactNumber, formatTimeAgo, formatViewsCount, useI18n } from "../i18n";
 import TagChip from "../components/TagChip";
 import { PlaylistIcon, PlaylistIconPicker } from "../components/PlaylistIcon";
@@ -79,6 +79,8 @@ export default function WatchPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [video, setVideo] = useState<Video | null>(null);
+  const [videoMissing, setVideoMissing] = useState(false);
+  const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
   const [related, setRelated] = useState<Video[]>([]);
   const [copyKey, setCopyKey] = useState(0);
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -126,6 +128,9 @@ export default function WatchPage() {
   useEffect(() => {
     if (!id) return;
     setDescOpen(false);
+    setVideo(null);
+    setVideoMissing(false);
+    setVideoInfo(null);
     archivedRef.current = false;
     window.scrollTo(0, 0);
     api
@@ -133,21 +138,47 @@ export default function WatchPage() {
       .then((r) => {
         setVideo(r.video);
         setRelated(r.related);
+        // External video already in DB but its RSS siblings were cleared:
+        // refresh them in the background so the "related" panel refills.
+        if (r.video.external && r.related.length === 0) {
+          api.videoInfo(id)
+            .then(() => api.video(id))
+            .then((r2) => setRelated(r2.related))
+            .catch(() => {});
+        }
       })
-      .catch(console.error);
+      .catch((e: Error) => {
+        if (e.message === "not found" || e.message.startsWith("HTTP 4")) {
+          setVideoMissing(true);
+          api.videoInfo(id)
+            .then((r) => {
+              setVideoInfo(r.info);
+              // Video was just inserted as external — fetch the full Video object
+              return api.video(id).then((full) => {
+                setVideo(full.video);
+                setRelated(full.related);
+                setVideoMissing(false);
+                setVideoInfo(null);
+              });
+            })
+            .catch(() => {});
+        } else {
+          console.error(e);
+        }
+      });
     api.watch(id).catch(() => {});
   }, [id]);
 
   // Create YT.Player and poll progress every 5 s
   useEffect(() => {
-    if (!id || !video || video.video_id !== id) return;
+    if (!id || (!video && !videoMissing)) return;
 
     const wrap = playerWrapRef.current;
     if (!wrap) return;
-    const canAutoArchive = video.live_status !== "live" && video.live_status !== "upcoming";
+    const canAutoArchive = video ? (video.live_status !== "live" && video.live_status !== "upcoming") : false;
 
     const startSeconds =
-      video.watch_position && video.watch_duration && video.watch_duration > 0 &&
+      video?.watch_position && video?.watch_duration && video.watch_duration > 0 &&
       video.watch_position / video.watch_duration < 0.9
         ? Math.floor(video.watch_position) : 0;
 
@@ -195,6 +226,7 @@ export default function WatchPage() {
           api.saveProgress(id, position, playerDuration).catch(() => {});
           if (canAutoArchive && playerDuration > 30 && position / playerDuration >= 0.9 && !archivedRef.current) {
             archivedRef.current = true;
+            api.saveProgress(id, playerDuration, playerDuration).catch(() => {});
             api.archiveVideo(id).catch(() => {});
           }
           for (const seg of sbSegmentsRef.current) {
@@ -210,7 +242,7 @@ export default function WatchPage() {
     return () => {
       destroyed = true;
       clearInterval(pollInterval);
-      if (progressRef.current) {
+      if (progressRef.current && !archivedRef.current) {
         const { position, duration } = progressRef.current;
         api.saveProgress(id, position, duration).catch(() => {});
         progressRef.current = null;
@@ -221,7 +253,7 @@ export default function WatchPage() {
       }
       while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
     };
-  }, [id, video?.video_id]);
+  }, [id, video?.video_id, videoMissing]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -287,17 +319,19 @@ export default function WatchPage() {
     return () => clearInterval(t);
   }, [id]);
 
-  if (!video) return null;
+  if (!video && !videoMissing) return null;
 
-  const reload = () => api.video(video.video_id).then((r) => setVideo(r.video));
+  const reload = () => video && api.video(video.video_id).then((r) => setVideo(r.video));
 
   const copyLink = () => {
+    if (!video) return;
     navigator.clipboard.writeText(`https://www.youtube.com/watch?v=${video.video_id}`).then(() => {
       setCopyKey((k) => k + 1);
     });
   };
 
   const queue = async (bucket: Bucket) => {
+    if (!video) return;
     setMenuOpen(false);
     await api.queue(video.video_id, bucket);
     emit("queue-changed");
@@ -305,6 +339,7 @@ export default function WatchPage() {
   };
 
   const openPlaylistMenu = async () => {
+    if (!video) return;
     const next = !playlistOpen;
     setPlaylistOpen(next);
     if (next) {
@@ -314,6 +349,7 @@ export default function WatchPage() {
   };
 
   const togglePlaylist = async (playlist: UserPlaylist) => {
+    if (!video) return;
     const hasVideo = playlist.has_video === 1;
     if (hasVideo) await api.removeVideoFromUserPlaylist(playlist.id, video.video_id);
     else await api.addVideoToUserPlaylist(playlist.id, video.video_id);
@@ -328,7 +364,7 @@ export default function WatchPage() {
   };
 
   const createPlaylist = async () => {
-    if (!newPlaylistName.trim()) return;
+    if (!video || !newPlaylistName.trim()) return;
     const r = await api.createUserPlaylist({ name: newPlaylistName.trim(), icon: newPlaylistIcon });
     await api.addVideoToUserPlaylist(r.playlist.id, video.video_id);
     setPlaylists((items) => [...items, { ...r.playlist, has_video: 1, video_count: 1 }]);
@@ -341,7 +377,7 @@ export default function WatchPage() {
     <div className={`watch-layout${cinemaMode ? " theater" : ""}`}>
       <div>
         <div className="cinema-player-wrap">
-          {cinemaMode && (
+          {cinemaMode && video && (
             <div
               className="player-glow"
               style={{ backgroundImage: `url(${img(video.thumbnail)})` }}
@@ -351,8 +387,58 @@ export default function WatchPage() {
             <div ref={playerWrapRef} className="watch-player" />
           </div>
         </div>
-        <h1 className="watch-title">{video.title}</h1>
-        <div className="watch-row">
+        {(video ?? videoInfo) && (
+          <h1 className="watch-title">{video?.title ?? videoInfo?.title}</h1>
+        )}
+        {videoMissing && videoInfo && (
+          <div className="watch-row">
+            <div className="watch-channel">
+              <div className="watch-channel-top">
+                <div>
+                  <Link to={`/channel/${videoInfo.channelId}`} className="name channel-link">
+                    {videoInfo.channelTitle}
+                  </Link>
+                </div>
+              </div>
+            </div>
+            <a
+              className="btn"
+              href={`https://www.youtube.com/watch?v=${videoInfo.videoId}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <ExternalLink size={15} />
+              YouTube
+            </a>
+          </div>
+        )}
+        {videoMissing && videoInfo && (
+          <div
+            className={`watch-desc${descOpen ? "" : " clamped"}`}
+            onClick={() => !descOpen && setDescOpen(true)}
+          >
+            <div className="watch-desc-stats">
+              {videoInfo.viewCount != null && (
+                <span className="stat"><Eye /> {formatViewsCount(videoInfo.viewCount, language)}</span>
+              )}
+              {videoInfo.publishedAt && (
+                <span className="stat"><CalendarDays /> {new Date(videoInfo.publishedAt).toLocaleDateString(locale)}</span>
+              )}
+            </div>
+            {videoInfo.description && (
+              <>
+                <div className="watch-desc-sep" />
+                <Linkify text={videoInfo.description} />
+              </>
+            )}
+          </div>
+        )}
+        {videoMissing && videoInfo?.description && (
+          <button className="watch-desc-toggle" onClick={() => setDescOpen((o) => !o)}>
+            {descOpen ? t("showLess") : t("showMore")}
+          </button>
+        )}
+        {video && <div className="watch-row">
           <div className="watch-channel">
             <div className="watch-channel-top">
               {video.channel_thumbnail && (
@@ -456,43 +542,42 @@ export default function WatchPage() {
             <ExternalLink size={15} />
             YouTube
           </a>
-        </div>
-        {(video.live_status === "live" || video.bucket || video.tags.length > 0) && (
+        </div>}
+        {video && (video.live_status === "live" || video.tags.length > 0) && (
           <div className="watch-tags">
             {video.live_status === "live" && (
               <span className="watch-queue-tag live">{t("liveStream")}</span>
-            )}
-            {video.bucket && (
-              <span className="watch-queue-tag">{bucketLabel(video.bucket)}</span>
             )}
             {video.tags.map((t) => (
               <TagChip key={`${t.id}-${t.source}`} tag={t} />
             ))}
           </div>
         )}
-        <div
-          className={`watch-desc${descOpen ? "" : " clamped"}`}
-          onClick={() => !descOpen && setDescOpen(true)}
-        >
-          <div className="watch-desc-stats">
-            {video.views != null && (
-              <span className="stat"><Eye /> {formatViewsCount(video.views, language)}</span>
-            )}
-            {video.likes != null && (
-              <span className="stat"><ThumbsUp /> {compactNumber(video.likes, language)}</span>
-            )}
-            {video.published_at && (
-              <span className="stat"><CalendarDays /> {new Date(video.published_at).toLocaleDateString(locale)}</span>
+        {video && (
+          <div
+            className={`watch-desc${descOpen ? "" : " clamped"}`}
+            onClick={() => !descOpen && setDescOpen(true)}
+          >
+            <div className="watch-desc-stats">
+              {video.views != null && (
+                <span className="stat"><Eye /> {formatViewsCount(video.views, language)}</span>
+              )}
+              {video.likes != null && (
+                <span className="stat"><ThumbsUp /> {compactNumber(video.likes, language)}</span>
+              )}
+              {video.published_at && (
+                <span className="stat"><CalendarDays /> {new Date(video.published_at).toLocaleDateString(locale)}</span>
+              )}
+            </div>
+            {video.description && (
+              <>
+                <div className="watch-desc-sep" />
+                <Linkify text={video.description} />
+              </>
             )}
           </div>
-          {video.description && (
-            <>
-              <div className="watch-desc-sep" />
-              <Linkify text={video.description} />
-            </>
-          )}
-        </div>
-        {video.description && (
+        )}
+        {video?.description && (
           <button className="watch-desc-toggle" onClick={() => setDescOpen((o) => !o)}>
             {descOpen ? t("showLess") : t("showMore")}
           </button>

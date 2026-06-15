@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { subscribe } from "../events";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Clock, Grid2X2, Grid3X3, Inbox, RefreshCw, Square } from "lucide-react";
-import { api, type Bucket, type Tag, type Video } from "../api";
+import { api, type Bucket, type SearchResult, type Tag, type Video } from "../api";
 import { useI18n } from "../i18n";
 import TagFilterBar from "../components/TagFilterBar";
 import VideoCard from "../components/VideoCard";
@@ -18,6 +18,35 @@ const GRID_SIZES: { id: GridSize; icon: React.ReactNode; labelKey: "gridSmall" |
 
 const BUCKET_ORDER: Bucket[] = ["today", "tonight", "tomorrow", "weekend"];
 
+function useHScroll() {
+  const [shadowLeft, setShadowLeft] = useState(false);
+  const [shadowRight, setShadowRight] = useState(false);
+  const cleanupRef = useRef<(() => void) | null>(null);
+
+  const ref = useCallback((el: HTMLDivElement | null) => {
+    cleanupRef.current?.();
+    cleanupRef.current = null;
+    if (!el) return;
+    const update = () => {
+      setShadowLeft(el.scrollLeft > 4);
+      setShadowRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 4);
+    };
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    const mo = new MutationObserver(update);
+    mo.observe(el, { childList: true, subtree: false });
+    cleanupRef.current = () => {
+      el.removeEventListener("scroll", update);
+      ro.disconnect();
+      mo.disconnect();
+    };
+  }, []);
+
+  return { ref, shadowLeft, shadowRight };
+}
+
 export default function FeedPage({
   onPlay,
   showToast,
@@ -26,10 +55,15 @@ export default function FeedPage({
   showToast: (m: string) => void;
 }) {
   const { t, language } = useI18n();
+  const navigate = useNavigate();
   const [params] = useSearchParams();
   const q = params.get("q") ?? "";
   const [videos, setVideos] = useState<Video[]>([]);
   const [queued, setQueued] = useState<Video[]>([]);
+  const [inProgress, setInProgress] = useState<Video[]>([]);
+  const [ytResults, setYtResults] = useState<SearchResult[]>([]);
+  const [ytLoading, setYtLoading] = useState(false);
+  const [searchExpanded, setSearchExpanded] = useState(false);
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTags, setSelectedTags] = useState<number[]>(() => {
     try { return JSON.parse(sessionStorage.getItem("feedTags") ?? "[]"); } catch { return []; }
@@ -43,8 +77,29 @@ export default function FeedPage({
     () => (localStorage.getItem("gridSize") as GridSize) ?? "sm"
   );
   const loadMoreRef = useRef<HTMLButtonElement>(null);
+  const inProgressScroll = useHScroll();
+  const queuedScroll = useHScroll();
+  const hScrollWrapRef = useRef<HTMLDivElement>(null);
+  const [hCardWidth, setHCardWidth] = useState(220);
 
-  useEffect(() => setPage(0), [q]);
+  const GRID_MIN: Record<GridSize, number> = { sm: 220, md: 320, lg: 360 };
+
+  useEffect(() => {
+    const el = hScrollWrapRef.current;
+    if (!el) return;
+    const update = () => {
+      const w = el.clientWidth;
+      const min = GRID_MIN[gridSize];
+      const cols = Math.max(1, Math.floor(w / min));
+      setHCardWidth(Math.floor((w - (cols - 1) * 12) / cols));
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [gridSize]);
+
+  useEffect(() => { setPage(0); setSearchExpanded(false); }, [q]);
 
   const load = useCallback(async (requestedPage = page) => {
     if (requestedPage === 0) setLoading(true);
@@ -71,13 +126,27 @@ export default function FeedPage({
     api.watchlist().then((r) => setQueued(r.videos)).catch(console.error);
   }, []);
 
+  const loadInProgress = useCallback(() => {
+    api.inProgress().then((r) => setInProgress(r.videos)).catch(console.error);
+  }, []);
+
   useEffect(() => {
     loadTags();
     loadQueued();
-  }, [loadTags, loadQueued]);
+    loadInProgress();
+  }, [loadTags, loadQueued, loadInProgress]);
 
   useEffect(() => subscribe("tags-changed", loadTags), [loadTags]);
   useEffect(() => subscribe("queue-changed", loadQueued), [loadQueued]);
+
+  useEffect(() => {
+    if (!q) { setYtResults([]); return; }
+    setYtLoading(true);
+    api.youtubeSearch(q)
+      .then((r) => setYtResults(r.results))
+      .catch(() => setYtResults([]))
+      .finally(() => setYtLoading(false));
+  }, [q]);
 
   // Infinite scroll
   useEffect(() => {
@@ -134,6 +203,7 @@ export default function FeedPage({
     setPage(0);
     load(0).catch(console.error);
     loadQueued();
+    loadInProgress();
   };
 
   // Time-based queued sections — only show videos that have unlocked.
@@ -148,7 +218,7 @@ export default function FeedPage({
 
   return (
     <>
-      <div className="toolbar">
+      <div className="toolbar" ref={hScrollWrapRef}>
         <TagFilterBar tags={tags} selected={selectedTags} onToggle={toggleTag} onClearAll={clearTags} />
         <div className="toolbar-right" style={{ display: "flex", gap: 4, alignItems: "center" }}>
           <div className="grid-size-toggle">
@@ -175,23 +245,45 @@ export default function FeedPage({
         </p>
       )}
 
+      {inProgress.length > 0 && !q && (
+        <div className="continue-watching-section">
+          <div className="time-section-header">
+            <Clock size={16} />
+            <span>{t("continueWatching")}</span>
+          </div>
+          <div className={`h-scroll-wrap${inProgressScroll.shadowLeft ? " shadow-left" : ""}${inProgressScroll.shadowRight ? " shadow-right" : ""}`}>
+            <div className={`h-scroll-row h-scroll-row--${gridSize}`} ref={inProgressScroll.ref}>
+              {inProgress.map((v) => (
+                <div key={v.video_id} className="h-scroll-card" style={{ width: hCardWidth }}>
+                  <VideoCard video={v} onPlay={onPlay} onChanged={loadInProgress} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {dueQueuedVideos.length > 0 && !q && selectedTags.length === 0 && (
         <div className="time-section">
           <div className="time-section-header">
             <Clock size={16} />
             <span>{t("navWatchlist")}</span>
           </div>
-          <div className={`video-grid video-grid--${gridSize}`}>
-            {dueQueuedVideos.map((v) => (
-              <VideoCard key={v.video_id} video={v} onPlay={onPlay} onChanged={reload} />
-            ))}
+          <div className={`h-scroll-wrap${queuedScroll.shadowLeft ? " shadow-left" : ""}${queuedScroll.shadowRight ? " shadow-right" : ""}`}>
+            <div className={`h-scroll-row h-scroll-row--${gridSize}`} ref={queuedScroll.ref}>
+              {dueQueuedVideos.map((v) => (
+                <div key={v.video_id} className="h-scroll-card" style={{ width: hCardWidth }}>
+                  <VideoCard video={v} onPlay={onPlay} onChanged={reload} />
+                </div>
+              ))}
+            </div>
           </div>
           <div className="time-section-divider" />
         </div>
       )}
 
       {loading && videos.length === 0 ? (
-        <VideoGridSkeleton gridSize={gridSize} />
+        <VideoGridSkeleton gridSize={q ? "sm" : gridSize} />
       ) : videos.length === 0 ? (
         <div className="empty-state">
           <Inbox />
@@ -201,6 +293,27 @@ export default function FeedPage({
               : t("noVideos")}
           </div>
         </div>
+      ) : q ? (
+        <>
+          <div className="video-grid video-grid--sm">
+            {(searchExpanded ? videos : videos.slice(0, 8)).map((v) => (
+              <VideoCard key={v.video_id} video={v} onPlay={onPlay} onChanged={reload} />
+            ))}
+          </div>
+          {loadingMore && <VideoGridSkeleton count={4} gridSize="sm" />}
+          {videos.length > 8 && (
+            <div className="load-more">
+              <button className="btn" onClick={() => setSearchExpanded((e) => !e)}>
+                {searchExpanded ? t("showLess") : `${t("showMore")} (${videos.length - 8})`}
+              </button>
+              {hasMore && !loadingMore && searchExpanded && (
+                <button ref={loadMoreRef} className="btn secondary" onClick={() => setPage((p) => p + 1)}>
+                  {t("loadMore")}
+                </button>
+              )}
+            </div>
+          )}
+        </>
       ) : (
         <>
           <div className={`video-grid video-grid--${gridSize}`}>
@@ -217,6 +330,39 @@ export default function FeedPage({
             </div>
           )}
         </>
+      )}
+
+      {q && (
+        <div className="yt-results-section">
+          <div className="time-section-header">
+            <span>{t("youtubeResults")}</span>
+          </div>
+          {ytLoading ? (
+            <VideoGridSkeleton count={4} gridSize="sm" />
+          ) : ytResults.length === 0 ? null : (
+            <div className="yt-results-list">
+              {ytResults.map((r) => (
+                <div
+                  key={r.videoId}
+                  className="yt-result-row"
+                  onClick={() => navigate(`/watch/${r.videoId}`)}
+                >
+                  <div className="yt-result-thumb">
+                    <img src={r.thumbnail} alt="" loading="lazy" />
+                    {r.duration && <span className="yt-result-dur">{r.duration}</span>}
+                  </div>
+                  <div className="yt-result-info">
+                    <div className="yt-result-title">{r.title}</div>
+                    <div className="yt-result-meta">
+                      {r.channelTitle}
+                      {r.viewCount != null && ` · ${r.viewCount.toLocaleString()} ${language === "pl" ? "wyświetleń" : "views"}`}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </>
   );
