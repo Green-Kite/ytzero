@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Check, ExternalLink, ListVideo, Plus, RefreshCw, UserMinus, UserPlus, Video as VideoIcon, Zap } from "lucide-react";
 import { api, type ChannelAbout, type PlaylistInfo, type Tag, type Video } from "../api";
 import TagChip from "../components/TagChip";
+import Tooltip from "../components/Tooltip";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { img } from "../img";
@@ -18,7 +19,7 @@ function formatVideoCount(n: string | number, language: Language): string {
 }
 
 export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) {
-  const { t, language } = useI18n();
+  const { t, language, locale } = useI18n();
   const { id } = useParams<{ id: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = (searchParams.get("tab") as Tab) ?? "videos";
@@ -142,7 +143,16 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
         {about?.avatar && <img className="channel-avatar" src={img(about.avatar)} alt="" />}
         <div className="channel-info">
           <h1 className="channel-title">{about?.title ?? "…"}</h1>
-          {about && about.stats.length > 0 && <div className="channel-stats">{about.stats.join(" · ")}</div>}
+          {about && about.stats.length > 0 && (
+            <div className="channel-stats">
+              {about.stats[0] && <span>{about.stats[0]} {t("subscribers")}</span>}
+              {about.stats.slice(1).map((s, i) =>
+                s.startsWith("@")
+                  ? <span key={i}>{s}</span>
+                  : <span key={i}>{s} {language === "pl" ? "filmów" : t("videos")}</span>
+              )}
+            </div>
+          )}
           {about?.description && (
             <div
               className={`channel-desc${descOpen ? "" : " clamped"}`}
@@ -150,6 +160,31 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
               title={descOpen ? t("collapse") : t("expand")}
             >
               {about.description}
+            </div>
+          )}
+          {about && (about.links.length > 0 || about.joinedDate || about.viewCount) && (
+            <div className="channel-about-extra">
+              {about.links.length > 0 && (
+                <div className="channel-links">
+                  {about.links.map((l) => (
+                    <Tooltip key={l.url} text={l.url.replace(/^https?:\/\//, "").replace(/\/$/, "")} pos="bottom">
+                      <a href={l.url} target="_blank" rel="noreferrer" className="channel-link-item">
+                        <span className="channel-link-title">{l.title}</span>
+                      </a>
+                    </Tooltip>
+                  ))}
+                </div>
+              )}
+              <div className="channel-meta-row">
+                {about.joinedDate && (() => {
+                  const d = new Date(about.joinedDate);
+                  const formatted = isNaN(d.getTime())
+                    ? about.joinedDate
+                    : d.toLocaleDateString(locale, { year: "numeric", month: "long", day: "numeric" });
+                  return <span>{language === "pl" ? "Dołączył(a)" : "Joined"} {formatted}</span>;
+                })()}
+                {about.viewCount && <span>{about.viewCount} {language === "pl" ? "wyświetleń" : "views"}</span>}
+              </div>
             </div>
           )}
         </div>

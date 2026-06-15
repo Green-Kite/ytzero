@@ -329,7 +329,7 @@ body.sidebar-hidden .sidebar { width: 0; padding: 0; }
 }
 
 /* ---------- main & topbar ---------- */
-.main { flex: 1; min-width: 0; }
+.main { flex: 1; min-width: 0; overflow-x: clip; }
 .content { padding: 18px calc(32px + var(--safe-right)) calc(80px + var(--safe-bottom)) calc(32px + var(--safe-left)); }
 .page-title { font-size: 19px; font-weight: 700; margin: 4px 0 20px; letter-spacing: -0.2px; }
 .page-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -350,6 +350,15 @@ body.sidebar-hidden .sidebar { width: 0; padding: 0; }
   background: rgba(15, 15, 15, 0.88);
   backdrop-filter: blur(10px);
   flex-shrink: 0;
+  transition: background 0.25s, backdrop-filter 0.25s;
+}
+body.cinema .topbar {
+  background: transparent;
+  backdrop-filter: none;
+}
+body.cinema .topbar.topbar--solid {
+  background: rgba(15, 15, 15, 0.88);
+  backdrop-filter: blur(10px);
 }
 .sidebar-toggle-btn {
   display: flex;
@@ -1224,6 +1233,7 @@ body.sidebar-hidden .sidebar { width: 0; padding: 0; }
 }
 .watch-player-shell {
   position: relative;
+  transition: width 0.4s ease;
   width: min(100%, calc(80vh * 16 / 9));
   border-radius: var(--radius);
   overflow: hidden;
@@ -1432,15 +1442,17 @@ body.sidebar-hidden .sidebar { width: 0; padding: 0; }
   background-size: cover;
   background-position: center;
   filter: blur(60px) saturate(2.5) brightness(0.65);
-  opacity: 0.6;
+  opacity: 0;
   z-index: -1;
   pointer-events: none;
+  transition: opacity 0.4s ease;
 }
 
-/* Cinema: strip content padding so theater player spans full width */
+/* Cinema: strip content padding so theater player spans full width and sits flush under topbar */
 body.cinema .content {
   padding-left: 0;
   padding-right: 0;
+  padding-top: 0;
 }
 
 /* Theater layout: single-column, full-width player */
@@ -1454,17 +1466,21 @@ body.cinema .content {
   display: flex;
   justify-content: center;
   background: #000;
+  transition: background 0.4s ease;
+}
+.cinema-player-wrap {
+  transition: background 0.4s ease;
 }
 
-/* Player: constrained by 75% viewport height, centres when narrower than full width */
+/* Player: constrained by viewport height minus topbar, centres when narrower than full width */
 .watch-layout.theater .watch-player {
   border-radius: 0;
   aspect-ratio: 16 / 9;
-  width: min(100%, calc(75vh * 16 / 9));
+  width: min(100%, calc((100dvh - var(--topbar-h) - 98px) * 16 / 9));
 }
 .watch-layout.theater .watch-player-shell {
   border-radius: 0;
-  width: min(100%, calc(75vh * 16 / 9));
+  width: min(100%, calc((100dvh - var(--topbar-h) - 98px) * 16 / 9));
 }
 
 /* Restore horizontal padding for text content below the player */
@@ -1477,10 +1493,11 @@ body.cinema .watch-layout.theater aside {
   padding-right: clamp(20px, 3vw, 60px);
 }
 body.cinema .watch-layout.theater .watch-desc,
-body.cinema .watch-layout.theater .sb-segments {
+body.cinema .watch-layout.theater .watch-panels {
   margin-left: clamp(20px, 3vw, 60px);
   margin-right: clamp(20px, 3vw, 60px);
 }
+
 
 body.cinema .watch-layout.theater .watch-row .btn {
   background: transparent;
@@ -1544,7 +1561,7 @@ body.cinema .watch-layout.theater .watch-row .btn.active {
 /* ---------- channel page ---------- */
 .channel-banner {
   width: 100%;
-  max-height: 180px;
+  max-height: 260px;
   object-fit: cover;
   border-radius: var(--radius);
   margin-bottom: 18px;
@@ -1565,7 +1582,8 @@ body.cinema .watch-layout.theater .watch-row .btn.active {
 }
 .channel-info { flex: 1; min-width: 0; }
 .channel-title { font-size: 22px; font-weight: 700; margin: 4px 0 4px; letter-spacing: -0.3px; }
-.channel-stats { color: var(--text-2); font-size: 13px; margin-bottom: 8px; }
+.channel-stats { color: var(--text-2); font-size: 13px; margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 0 6px; }
+.channel-stats span + span::before { content: "·"; margin-right: 6px; }
 .channel-desc {
   color: var(--text-2);
   font-size: 12.5px;
@@ -1580,6 +1598,42 @@ body.cinema .watch-layout.theater .watch-row .btn.active {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+.channel-about-extra {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.channel-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.channel-link-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  padding: 6px 14px;
+  background: var(--surface);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  transition: background 0.12s;
+  white-space: nowrap;
+}
+.channel-link-item:hover { background: var(--surface-2); }
+.channel-link-title { color: inherit; }
+.channel-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.channel-meta-row span + span::before { content: "·"; margin-right: 10px; }
 
 .channel-header-actions {
   display: flex;
@@ -2476,6 +2530,82 @@ body.cinema .watch-layout.theater .watch-row .btn.active {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
+/* Watch panels: chapters + SponsorBlock side by side (half and half). */
+.watch-panels {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin-top: 14px;
+}
+.watch-panel {
+  flex: 1 1 0;
+  min-width: 0;
+  margin-top: 0;
+}
+.watch-panel .sb-segments-list {
+  max-height: 320px;
+  overflow-y: auto;
+}
+.watch-panel .sb-segment-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 720px) {
+  .watch-panels { flex-direction: column; }
+}
+
+/* SponsorBlock skip controls: master pause + per-segment toggle. */
+.sb-segments-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sb-pause-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: 14px;
+  padding: 4px 9px;
+  border: 1px solid var(--surface-2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.sb-pause-btn svg { width: 13px; height: 13px; }
+.sb-pause-btn:hover { background: var(--surface-2); color: var(--text); }
+.sb-pause-btn.active { color: var(--accent); border-color: currentColor; }
+.sb-paused .sb-segments-list { opacity: 0.45; }
+.sb-seg-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  margin: -4px -6px -4px 2px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.sb-seg-toggle svg { width: 15px; height: 15px; }
+.sb-seg-toggle:hover { background: var(--surface-2); color: var(--text); }
+.sb-segment-row.disabled .sb-dot,
+.sb-segment-row.disabled .sb-segment-name,
+.sb-segment-row.disabled .sb-time { opacity: 0.5; }
+.sb-segment-row.disabled .sb-segment-name { text-decoration: line-through; }
+.sb-segment-row.disabled .sb-seg-toggle { color: var(--accent); }
 
 /* SponsorBlock category toggles in Settings — 2 columns */
 .sb-category-grid {

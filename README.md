@@ -202,15 +202,21 @@ This can be useful for children when you want YouTube access to be limited to se
 | `PORT` | `3001` | HTTP server port. |
 | `DB_PATH` | `./data/db/ytzero.db` | SQLite database path. |
 | `IMG_CACHE_DIR` | `./data/imgcache` | Thumbnail and image cache directory. |
-| `REFRESH_INTERVAL_MINUTES` | `15` | RSS and live-status refresh interval. |
+| `IMG_CACHE_TTL_DAYS` | `5` | How long a cached image is fresh before a refetch is attempted. |
+| `LOG_PATH` | _(stdout only)_ | Optional file to also write logs to. |
+| `REFRESH_INTERVAL_MINUTES` | `5` | RSS and live-status refresh interval. |
+| `DURATION_INTERVAL_MINUTES` | `3` | Interval for the background job that backfills missing video durations. |
+| `DURATION_BATCH_SIZE` | `20` | Videos processed per duration-backfill run. |
 | `UI_DIST` | `./public` | Built frontend directory served by the backend. |
+
+Durations are filled lazily: the per-channel scrape covers recent uploads, and the duration-backfill job fetches anything still missing (older uploads, RSS-only and imported videos), most-recent first. Avatars and subscriber counts are refreshed by a separate background job (5 channels every 5 minutes).
 
 Docker Compose sets:
 
 ```yaml
 DB_PATH=/data/db/ytzero.db
 IMG_CACHE_DIR=/data/imgcache
-REFRESH_INTERVAL_MINUTES=15
+REFRESH_INTERVAL_MINUTES=5
 ```
 
 and mounts:

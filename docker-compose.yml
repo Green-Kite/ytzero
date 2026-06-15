@@ -7,7 +7,7 @@ services:
     volumes:
       - ./data:/data
     environment:
-      - REFRESH_INTERVAL_MINUTES=15
+      - REFRESH_INTERVAL_MINUTES=5
       - DB_PATH=/data/db/ytzero.db
       - IMG_CACHE_DIR=/data/imgcache
     restart: unless-stopped

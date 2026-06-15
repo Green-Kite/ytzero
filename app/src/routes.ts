@@ -6,6 +6,7 @@ import {
   fetchChannelPlaylists,
   fetchChannelVideosDurations,
   fetchPlaylistVideos,
+  fetchVideoChapters,
   fetchVideoInfo,
   parseOpml,
   parseTakeoutCsv,
@@ -431,6 +432,14 @@ api.get("/videos/:id/info", async (c) => {
   }
 });
 
+api.get("/videos/:id/chapters", async (c) => {
+  try {
+    return c.json({ chapters: await fetchVideoChapters(c.req.param("id")) });
+  } catch {
+    return c.json({ chapters: [] });
+  }
+});
+
 api.get("/videos/:id", (c) => {
   const row = db
     .prepare(`${BASE_SELECT} WHERE v.video_id = ?`)
@@ -447,20 +456,61 @@ api.get("/videos/:id", (c) => {
     )
   `).all(row.video_id, row.channel_id) as { tag_id: number }[];
 
-  let related: VideoRow[];
+  const RELATED_TARGET = 15;
+  const seen = new Set<string>([row.video_id]);
+  const related: VideoRow[] = [];
+
+  const fill = (rows: VideoRow[]) => {
+    for (const r of rows) {
+      if (seen.has(r.video_id) || r.is_short === 1) continue;
+      seen.add(r.video_id);
+      related.push(r);
+      if (related.length >= RELATED_TARGET) break;
+    }
+  };
+
+  const need = () => RELATED_TARGET - related.length;
+
+  // Step 1 — same tags (own + channel-inherited), non-archived, most recent
   if (tagRows.length > 0) {
-    const ids = tagRows.map((t) => t.tag_id);
-    const ph = ids.map(() => "?").join(",");
-    related = db.prepare(
-      `${BASE_SELECT} WHERE v.video_id != ? AND v.status != 'archived'
+    const tagIds = tagRows.map((t) => t.tag_id);
+    const ph = tagIds.map(() => "?").join(",");
+    fill(db.prepare(
+      `${BASE_SELECT} WHERE v.video_id != ? AND v.status != 'archived' AND v.is_short IS NOT 1
        AND (EXISTS (SELECT 1 FROM video_tags vt WHERE vt.video_id = v.video_id AND vt.tag_id IN (${ph}))
-            OR  EXISTS (SELECT 1 FROM channel_tags ct WHERE ct.channel_id = v.channel_id AND ct.tag_id IN (${ph})))
-       ORDER BY v.published_at DESC LIMIT 20`
-    ).all(row.video_id, ...ids, ...ids) as VideoRow[];
-  } else {
-    related = db.prepare(
-      `${BASE_SELECT} WHERE v.channel_id = ? AND v.video_id != ? ORDER BY v.published_at DESC LIMIT 12`
-    ).all(row.channel_id, row.video_id) as VideoRow[];
+         OR EXISTS (SELECT 1 FROM channel_tags ct WHERE ct.channel_id = v.channel_id AND ct.tag_id IN (${ph})))
+       ORDER BY v.published_at DESC LIMIT ?`
+    ).all(row.video_id, ...tagIds, ...tagIds, RELATED_TARGET) as VideoRow[]);
+  }
+
+  // Step 2 — same channel, fill what's missing
+  if (need() > 0) {
+    fill(db.prepare(
+      `${BASE_SELECT} WHERE v.channel_id = ? AND v.video_id != ? AND v.status != 'archived' AND v.is_short IS NOT 1
+       ORDER BY v.published_at DESC LIMIT ?`
+    ).all(row.channel_id, row.video_id, need() * 2) as VideoRow[]);
+  }
+
+  // Step 3 — other channels with any shared tag, fill what's missing
+  if (need() > 0 && tagRows.length > 0) {
+    const tagIds = tagRows.map((t) => t.tag_id);
+    const ph = tagIds.map(() => "?").join(",");
+    const seenPh = [...seen].map(() => "?").join(",");
+    fill(db.prepare(
+      `${BASE_SELECT} WHERE v.video_id NOT IN (${seenPh}) AND v.status != 'archived' AND v.is_short IS NOT 1
+       AND (EXISTS (SELECT 1 FROM video_tags vt WHERE vt.video_id = v.video_id AND vt.tag_id IN (${ph}))
+         OR EXISTS (SELECT 1 FROM channel_tags ct WHERE ct.channel_id = v.channel_id AND ct.tag_id IN (${ph})))
+       ORDER BY v.published_at DESC LIMIT ?`
+    ).all(...seen, ...tagIds, ...tagIds, need() * 2) as VideoRow[]);
+  }
+
+  // Step 4 — any recent non-archived non-short inbox/queued videos
+  if (need() > 0) {
+    const seenPh = [...seen].map(() => "?").join(",");
+    fill(db.prepare(
+      `${BASE_SELECT} WHERE v.video_id NOT IN (${seenPh}) AND v.status NOT IN ('archived') AND v.is_short IS NOT 1
+       ORDER BY v.published_at DESC LIMIT ?`
+    ).all(...seen, need() * 2) as VideoRow[]);
   }
 
   return c.json({ video, related: attachTags(related) });

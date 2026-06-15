@@ -192,8 +192,15 @@ function TopBar({ appName }: { appName: string }) {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const [q, setQ] = useState(params.get("q") ?? "");
+  const [solid, setSolid] = useState(window.scrollY > 8);
 
   useEffect(() => setQ(params.get("q") ?? ""), [params]);
+
+  useEffect(() => {
+    const onScroll = () => setSolid(window.scrollY > 8);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -201,7 +208,7 @@ function TopBar({ appName }: { appName: string }) {
   };
 
   return (
-    <div className="topbar">
+    <div className={`topbar${solid ? " topbar--solid" : ""}`}>
       <button
         className="sidebar-toggle-btn"
         aria-label="Menu"

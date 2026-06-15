@@ -66,6 +66,11 @@ export interface FilterRule {
   channel_title: string | null;
 }
 
+export interface ChannelLink {
+  title: string;
+  url: string;
+}
+
 export interface ChannelAbout {
   channelId: string;
   title: string;
@@ -73,6 +78,10 @@ export interface ChannelAbout {
   avatar: string;
   banner: string;
   stats: string[];
+  links: ChannelLink[];
+  joinedDate: string;
+  viewCount: string;
+  handle: string;
 }
 
 export interface PlaylistInfo {
@@ -149,6 +158,11 @@ export interface SponsorSegment {
   actionType: string;
   segment: [number, number];
   UUID: string;
+}
+
+export interface VideoChapter {
+  title: string;
+  start: number;
 }
 
 export const SB_CATEGORIES: { id: string; label: { en: string; pl: string }; color: string }[] = [
@@ -334,6 +348,8 @@ export const api = {
     http(`/playlists/${id}/rules/${ruleId}`, { method: "DELETE" }),
   applyUserPlaylistRules: (id: number) =>
     http<{ matched: number }>(`/playlists/${id}/rules/apply`, { method: "POST" }),
+
+  chapters: (videoId: string) => http<{ chapters: VideoChapter[] }>(`/videos/${videoId}/chapters`),
 
   sponsorblock: async (videoId: string, categories: string[]): Promise<SponsorSegment[]> => {
     const qs = new URLSearchParams({ videoID: videoId, categories: JSON.stringify(categories) });

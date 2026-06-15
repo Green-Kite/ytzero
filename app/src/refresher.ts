@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { checkIsShort, fetchChannelAbout, fetchChannelFeed, fetchChannelVideos, fetchChannelVideosDurations, fetchLiveInfo } from "./youtube";
+import { checkIsShort, fetchChannelAbout, fetchChannelFeed, fetchChannelVideos, fetchChannelVideosDurations, fetchLiveInfo, fetchVideoInfo } from "./youtube";
 import { applyAutoTags } from "./autotags";
 import { applyPlaylistRulesToVideo } from "./userPlaylists";
 import { applyFilterRules } from "./filterRules";
@@ -193,7 +193,7 @@ export async function syncChannel(channelId: string): Promise<{ added: number }>
 export async function refreshAvatarsBatch() {
   const rows = db
     .prepare(
-      "SELECT channel_id FROM channels ORDER BY COALESCE(avatar_checked_at, '1970-01-01') ASC LIMIT 3"
+      "SELECT channel_id FROM channels ORDER BY COALESCE(avatar_checked_at, '1970-01-01') ASC LIMIT 5"
     )
     .all() as { channel_id: string }[];
 
@@ -216,6 +216,52 @@ export async function refreshAvatarsBatch() {
     }
     if (i < rows.length - 1) await Bun.sleep(5_000);
   }
+}
+
+/**
+ * Backfill `duration` for videos that don't have it yet, one video at a time
+ * via the watch page (reliable `lengthSeconds`). This is the backstop for
+ * everything the per-channel /videos scrape misses: older uploads beyond the
+ * recent tab, RSS-only rows, and externally imported "related" videos.
+ * Videos that already have a duration are never touched. Live videos are
+ * skipped (no fixed length); shorts are fine to fill — the UI just hides the
+ * badge for them. Most-recent first so the active feed fills before the tail.
+ */
+export async function refreshDurationsBatch(limit = 10) {
+  const rows = db
+    .prepare(
+      `SELECT video_id FROM videos
+       WHERE duration IS NULL AND live_status = 'none'
+       ORDER BY COALESCE(published_at, '1970-01-01') DESC
+       LIMIT ?`
+    )
+    .all(limit) as { video_id: string }[];
+  if (rows.length === 0) return;
+
+  const save = db.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND duration IS NULL");
+  // The fetch succeeded but the video genuinely has no fixed length (e.g. a
+  // live/premiere/members video): write an empty string so it reads as
+  // "checked, none" and isn't retried every cron tick. Transient fetch errors
+  // are left NULL on purpose so they get another chance later.
+  const markNone = db.prepare("UPDATE videos SET duration = '' WHERE video_id = ? AND duration IS NULL");
+
+  let filled = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const { video_id } = rows[i];
+    try {
+      const info = await fetchVideoInfo(video_id);
+      if (info.duration) {
+        save.run(info.duration, video_id);
+        filled++;
+      } else {
+        markNone.run(video_id);
+      }
+    } catch (e) {
+      log.warn("video.duration_failed", { videoId: video_id, error: e instanceof Error ? e.message : String(e) });
+    }
+    if (i < rows.length - 1) await Bun.sleep(800);
+  }
+  log.info("durations.batch", { checked: rows.length, filled });
 }
 
 let refreshing = false;
@@ -256,13 +302,21 @@ export async function refreshAll(): Promise<{ channels: number; added: number; e
 }
 
 export function startScheduler() {
-  const intervalMin = Number(process.env.REFRESH_INTERVAL_MINUTES ?? 15);
+  const intervalMin = Number(process.env.REFRESH_INTERVAL_MINUTES ?? 5);
   setTimeout(() => refreshAll().catch((e) => log.error("refresh.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 3_000);
   setInterval(() => refreshAll().catch((e) => log.error("refresh.cron_failed", { error: e instanceof Error ? e.message : String(e) })), intervalMin * 60_000);
   log.info("scheduler.feed_refresh", { intervalMin });
 
-  // Avatar cron: fetch 3 channels every 10 minutes, 5 s gap between each
+  // Avatar cron: fetch 5 channels every 5 minutes, 5 s gap between each
   setTimeout(() => refreshAvatarsBatch().catch((e) => log.error("avatars.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 15_000);
-  setInterval(() => refreshAvatarsBatch().catch((e) => log.error("avatars.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 10 * 60_000);
-  log.info("scheduler.avatar_refresh", { intervalMin: 10, batchSize: 3 });
+  setInterval(() => refreshAvatarsBatch().catch((e) => log.error("avatars.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 5 * 60_000);
+  log.info("scheduler.avatar_refresh", { intervalMin: 5, batchSize: 5 });
+
+  // Duration backfill cron: fill `duration` for videos still missing it,
+  // most-recent first, a small polite batch every few minutes.
+  const durationBatch = Number(process.env.DURATION_BATCH_SIZE ?? 20);
+  const durationIntervalMin = Number(process.env.DURATION_INTERVAL_MINUTES ?? 3);
+  setTimeout(() => refreshDurationsBatch(durationBatch).catch((e) => log.error("durations.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 30_000);
+  setInterval(() => refreshDurationsBatch(durationBatch).catch((e) => log.error("durations.cron_failed", { error: e instanceof Error ? e.message : String(e) })), durationIntervalMin * 60_000);
+  log.info("scheduler.duration_backfill", { intervalMin: durationIntervalMin, batchSize: durationBatch });
 }

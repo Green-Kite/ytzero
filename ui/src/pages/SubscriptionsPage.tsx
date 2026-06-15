@@ -73,7 +73,7 @@ export default function SubscriptionsPage() {
               )}
               <div className="subs-card-body">
                 <div className="subs-card-title">{ch.title || ch.channel_id}</div>
-                {ch.subscriber_count && <div className="subs-card-meta">{ch.subscriber_count}</div>}
+                {ch.subscriber_count && <div className="subs-card-meta">{ch.subscriber_count} {t("subscribers")}</div>}
                 {ch.tags.length > 0 && (
                   <div className="subs-card-tags">
                     {ch.tags.map((tag) => (

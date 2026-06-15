@@ -188,6 +188,11 @@ function deepCollect(node: any, key: string, out: any[] = []): any[] {
   return out;
 }
 
+export interface ChannelLink {
+  title: string;
+  url: string;
+}
+
 export interface ChannelAbout {
   channelId: string;
   title: string;
@@ -195,6 +200,10 @@ export interface ChannelAbout {
   avatar: string;
   banner: string;
   stats: string[];
+  links: ChannelLink[];
+  joinedDate: string;
+  viewCount: string;
+  handle: string;
 }
 
 const aboutCache = new Map<string, { at: number; data: ChannelAbout }>();
@@ -204,11 +213,44 @@ export async function fetchChannelAbout(channelId: string): Promise<ChannelAbout
   const cached = aboutCache.get(channelId);
   if (cached && Date.now() - cached.at < ABOUT_TTL) return cached.data;
 
-  const res = await fetch(`https://www.youtube.com/channel/${channelId}`, { headers: FETCH_HEADERS });
+  const [res, aboutRes] = await Promise.all([
+    fetch(`https://www.youtube.com/channel/${channelId}`, { headers: FETCH_HEADERS }),
+    fetch(`https://www.youtube.com/channel/${channelId}/about`, { headers: FETCH_HEADERS }),
+  ]);
   if (!res.ok) throw new Error(`channel page fetch failed (${res.status})`);
   const html = await res.text();
   const data = extractInitialData(html);
   const meta = data?.metadata?.channelMetadataRenderer ?? {};
+
+  // Parse /about tab for links, dates, view count
+  let links: ChannelLink[] = [];
+  let joinedDate = "";
+  let viewCount = "";
+  let handle = "";
+  if (aboutRes.ok) {
+    const aboutData = extractInitialData(await aboutRes.text());
+    const vm = deepCollect(aboutData, "aboutChannelViewModel")[0];
+    if (vm) {
+      // Strip "Joined " prefix — date is reformatted in the UI with the right locale
+      const rawJoined: string = vm.joinedDateText?.content ?? "";
+      joinedDate = rawJoined.replace(/^joined\s*/i, "").trim();
+      viewCount = (vm.viewCountText ?? "").replace(/\s*views?\s*/i, "").trim();
+      handle = vm.canonicalChannelUrl?.replace(/^https?:\/\/www\.youtube\.com\//, "") ?? "";
+      for (const l of deepCollect(aboutData, "channelExternalLinkViewModel")) {
+        const title = l?.title?.content ?? "";
+        const rawUrl: string = l?.link?.commandRuns?.[0]?.onTap?.innertubeCommand?.urlEndpoint?.url ?? "";
+        if (!title || !rawUrl) continue;
+        // YouTube wraps external links in a redirect — extract the real URL from `q=`
+        let url = rawUrl;
+        try {
+          const u = new URL(rawUrl);
+          const q = u.searchParams.get("q");
+          if (q) url = q;
+        } catch {}
+        links.push({ title, url });
+      }
+    }
+  }
 
   // Banner lives in the (frequently restructured) header; try both layouts.
   const bannerSources =
@@ -218,15 +260,22 @@ export async function fetchChannelAbout(channelId: string): Promise<ChannelAbout
   const banner = bannerSources.at(-1)?.url ?? "";
 
   // Subscriber / video counts: gather the short metadata texts from the header.
+  // Prioritise the subscriber count string (contains "subscriber") so stats[0]
+  // is always the sub count, not a @handle or video count.
   const stats: string[] = [];
+  const statsOther: string[] = [];
   for (const parts of deepCollect(data?.header, "metadataParts")) {
     for (const p of Array.isArray(parts) ? parts : []) {
       const t = p?.text?.content;
-      if (typeof t === "string" && t.length < 40) stats.push(t);
+      if (typeof t !== "string" || !t || t.length >= 40) continue;
+      if (/subscriber/i.test(t)) stats.push(t.replace(/\s*subscribers?\s*/i, "").trim());
+      else if (/\bvideos?\b/i.test(t)) statsOther.push(t.replace(/\s*videos?\s*/i, "").trim());
+      else statsOther.push(t);
     }
   }
   const subLegacy = data?.header?.c4TabbedHeaderRenderer?.subscriberCountText?.simpleText;
-  if (subLegacy) stats.push(subLegacy);
+  if (subLegacy && stats.length === 0) stats.push(subLegacy.replace(/\s*subscribers?\s*/i, "").trim());
+  stats.push(...statsOther);
 
   const about: ChannelAbout = {
     channelId,
@@ -235,6 +284,10 @@ export async function fetchChannelAbout(channelId: string): Promise<ChannelAbout
     avatar: meta.avatar?.thumbnails?.at(-1)?.url ?? "",
     banner,
     stats: [...new Set(stats)],
+    links,
+    joinedDate,
+    viewCount,
+    handle,
   };
   aboutCache.set(channelId, { at: Date.now(), data: about });
   return about;
@@ -463,6 +516,42 @@ export async function fetchVideoInfo(videoId: string): Promise<VideoInfo> {
   };
   videoInfoCache.set(videoId, { at: Date.now(), data: result });
   return result;
+}
+
+export interface VideoChapter {
+  title: string;
+  /** Start offset in whole seconds. */
+  start: number;
+}
+
+const chaptersCache = new Map<string, { at: number; data: VideoChapter[] }>();
+const CHAPTERS_TTL = 60 * 60_000;
+
+/**
+ * Scrape a video's chapter list from the watch page (same source as durations).
+ * Chapters live in `ytInitialData` under `chapterRenderer` — YouTube derives
+ * them from description timestamps or creator-defined markers. Returns an empty
+ * list when the video has no chapters. No YouTube API involved.
+ */
+export async function fetchVideoChapters(videoId: string): Promise<VideoChapter[]> {
+  const cached = chaptersCache.get(videoId);
+  if (cached && Date.now() - cached.at < CHAPTERS_TTL) return cached.data;
+
+  const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, { headers: FETCH_HEADERS });
+  if (!res.ok) return [];
+  const data = extractInitialData(await res.text());
+  const out: VideoChapter[] = [];
+  const seen = new Set<number>();
+  for (const ch of deepCollect(data, "chapterRenderer")) {
+    const title = ch?.title?.simpleText;
+    const start = Math.floor(Number(ch?.timeRangeStartMillis) / 1000);
+    if (typeof title !== "string" || !title || !Number.isFinite(start) || seen.has(start)) continue;
+    seen.add(start);
+    out.push({ title, start });
+  }
+  out.sort((a, b) => a.start - b.start);
+  chaptersCache.set(videoId, { at: Date.now(), data: out });
+  return out;
 }
 
 /**

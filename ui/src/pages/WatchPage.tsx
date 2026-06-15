@@ -11,11 +11,15 @@ import {
   Clapperboard,
   ExternalLink,
   Eye,
+  Pause,
+  Play,
   Share2,
+  SkipForward,
+  Square,
   ThumbsUp,
   Undo2,
 } from "lucide-react";
-import { api, type AppSettings, type Bucket, type SponsorSegment, type UserPlaylist, type Video, type VideoInfo, SB_CATEGORIES } from "../api";
+import { api, type AppSettings, type Bucket, type SponsorSegment, type UserPlaylist, type Video, type VideoChapter, type VideoInfo, SB_CATEGORIES } from "../api";
 import { compactNumber, formatTimeAgo, formatViewsCount, useI18n } from "../i18n";
 import TagChip from "../components/TagChip";
 import { PlaylistIcon, PlaylistIconPicker } from "../components/PlaylistIcon";
@@ -92,7 +96,11 @@ export default function WatchPage() {
   const [newPlaylistName, setNewPlaylistName] = useState("");
   const [newPlaylistIcon, setNewPlaylistIcon] = useState("ListMusic");
   const [cinemaMode, setCinemaMode] = useState(() => localStorage.getItem(CINEMA_MODE_KEY) === "1");
+  const [cinemaVisible, setCinemaVisible] = useState(() => localStorage.getItem(CINEMA_MODE_KEY) === "1");
   const [sbSegments, setSbSegments] = useState<SponsorSegment[]>([]);
+  const [sbPaused, setSbPaused] = useState(false);
+  const [disabledSegs, setDisabledSegs] = useState<Set<string>>(new Set());
+  const [chapters, setChapters] = useState<VideoChapter[]>([]);
   const menuRef = useRef<HTMLDivElement>(null);
   const playlistMenuRef = useRef<HTMLDivElement>(null);
   const likeButtonRef = useRef<HTMLButtonElement>(null);
@@ -101,6 +109,8 @@ export default function WatchPage() {
   const archivedRef = useRef(false);
   const progressRef = useRef<{ position: number; duration: number } | null>(null);
   const sbSegmentsRef = useRef<SponsorSegment[]>([]);
+  const sbPausedRef = useRef(false);
+  const disabledSegsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     api.settings().then((r) => setSettings(r.settings)).catch(() => setSettings(null));
@@ -109,6 +119,24 @@ export default function WatchPage() {
   useEffect(() => {
     sbSegmentsRef.current = sbSegments;
   }, [sbSegments]);
+  useEffect(() => { sbPausedRef.current = sbPaused; }, [sbPaused]);
+  useEffect(() => { disabledSegsRef.current = disabledSegs; }, [disabledSegs]);
+
+  // Reset skip overrides when navigating to another video.
+  useEffect(() => {
+    setSbPaused(false);
+    setDisabledSegs(new Set());
+  }, [id]);
+
+  useEffect(() => {
+    setChapters([]);
+    if (!id) return;
+    let cancelled = false;
+    api.chapters(id)
+      .then((r) => { if (!cancelled) setChapters(r.chapters); })
+      .catch(() => { if (!cancelled) setChapters([]); });
+    return () => { cancelled = true; };
+  }, [id]);
 
   useEffect(() => {
     if (!video || settings?.sponsorblock_enabled !== "1") {
@@ -231,10 +259,13 @@ export default function WatchPage() {
             api.saveProgress(id, playerDuration, playerDuration).catch(() => {});
             api.archiveVideo(id).catch(() => {});
           }
-          for (const seg of sbSegmentsRef.current) {
-            if (position >= seg.segment[0] && position < seg.segment[1] - 0.3) {
-              p.seekTo(seg.segment[1], true);
-              break;
+          if (!sbPausedRef.current) {
+            for (const seg of sbSegmentsRef.current) {
+              if (disabledSegsRef.current.has(seg.UUID)) continue;
+              if (position >= seg.segment[0] && position < seg.segment[1] - 0.3) {
+                p.seekTo(seg.segment[1], true);
+                break;
+              }
             }
           }
         } catch {}
@@ -278,22 +309,35 @@ export default function WatchPage() {
     return () => document.removeEventListener("mousedown", close);
   }, [playlistOpen]);
 
+  // Cinema class lifecycle — separated from key listener so cleanup doesn't
+  // prematurely remove the class when transitioning out.
   useEffect(() => {
     localStorage.setItem(CINEMA_MODE_KEY, cinemaMode ? "1" : "0");
-    document.body.classList.toggle("cinema", cinemaMode);
     if (cinemaMode) {
-      document.body.classList.add("sidebar-hidden");
+      document.body.classList.add("cinema", "sidebar-hidden");
+      requestAnimationFrame(() => requestAnimationFrame(() => setCinemaVisible(true)));
     } else {
-      document.body.classList.remove("sidebar-hidden");
+      setCinemaVisible(false);
+      const t = setTimeout(() => {
+        document.body.classList.remove("cinema", "sidebar-hidden");
+      }, 400);
+      return () => {
+        clearTimeout(t);
+        document.body.classList.remove("cinema", "sidebar-hidden");
+      };
     }
+  }, [cinemaMode]);
+
+  // Escape key — only active in cinema mode
+  useEffect(() => {
     if (!cinemaMode) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setCinemaMode(false); };
     document.addEventListener("keydown", onKey);
-    return () => {
-      document.body.classList.remove("cinema", "sidebar-hidden");
-      document.removeEventListener("keydown", onKey);
-    };
+    return () => document.removeEventListener("keydown", onKey);
   }, [cinemaMode]);
+
+  // Unmount: ensure body classes are cleaned up
+  useEffect(() => () => { document.body.classList.remove("cinema", "sidebar-hidden"); }, []);
 
   // Keyboard shortcuts: T = cinema, F = fullscreen
   useEffect(() => {
@@ -406,10 +450,10 @@ export default function WatchPage() {
     <div className={`watch-layout${cinemaMode ? " theater" : ""}`}>
       <div>
         <div className="cinema-player-wrap">
-          {cinemaMode && video && (
+          {video && (
             <div
               className="player-glow"
-              style={{ backgroundImage: `url(${img(video.thumbnail)})` }}
+              style={{ backgroundImage: `url(${img(video.thumbnail)})`, opacity: cinemaVisible ? 0.6 : 0 }}
             />
           )}
           <div className="watch-player-shell">
@@ -480,7 +524,7 @@ export default function WatchPage() {
                   {video.channel_title}
                 </Link>
                 {video.channel_subscriber_count && (
-                  <div className="sub">{video.channel_subscriber_count}</div>
+                  <div className="sub">{video.channel_subscriber_count} {t("subscribers")}</div>
                 )}
               </div>
             </div>
@@ -623,26 +667,75 @@ export default function WatchPage() {
             {descOpen ? t("showLess") : t("showMore")}
           </button>
         )}
-        {sbSegments.length > 0 && (
-          <div className="sb-segments">
-            <span className="sb-segments-label">{t("sbSegmentsTitle")}</span>
-            <div className="sb-segments-list">
-              {[...sbSegments].sort((a, b) => a.segment[0] - b.segment[0]).map((seg) => {
-                const cat = SB_CATEGORIES.find((c) => c.id === seg.category);
-                return (
-                  <div
-                    key={seg.UUID}
-                    className="sb-segment-row"
-                    style={{ "--sb-color": cat?.color ?? "#888" } as React.CSSProperties}
-                    onClick={() => playerRef.current?.seekTo(seg.segment[0], true)}
+        {(chapters.length > 0 || sbSegments.length > 0) && (
+          <div className="watch-panels">
+            {chapters.length > 0 && (
+              <div className="sb-segments watch-panel">
+                <span className="sb-segments-label">{t("chaptersTitle")}</span>
+                <div className="sb-segments-list">
+                  {chapters.map((ch) => (
+                    <div
+                      key={ch.start}
+                      className="sb-segment-row"
+                      onClick={() => playerRef.current?.seekTo(ch.start, true)}
+                    >
+                      <span className="sb-segment-name">{ch.title}</span>
+                      <span className="sb-time">{fmtTime(ch.start)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {sbSegments.length > 0 && (
+              <div className={`sb-segments watch-panel${sbPaused ? " sb-paused" : ""}`}>
+                <div className="sb-segments-head">
+                  <span className="sb-segments-label">{t("sbSegmentsTitle")}</span>
+                  <button
+                    type="button"
+                    className={`sb-pause-btn${sbPaused ? " active" : ""}`}
+                    onClick={() => setSbPaused((p) => !p)}
+                    title={sbPaused ? t("sbResume") : t("sbPause")}
                   >
-                    <span className="sb-dot" />
-                    <span className="sb-segment-name">{cat?.label[language] ?? seg.category}</span>
-                    <span className="sb-time">{fmtTime(seg.segment[0])} → {fmtTime(seg.segment[1])}</span>
-                  </div>
-                );
-              })}
-            </div>
+                    {sbPaused ? <Play /> : <Pause />}
+                    <span>{sbPaused ? t("sbResume") : t("sbPause")}</span>
+                  </button>
+                </div>
+                <div className="sb-segments-list">
+                  {[...sbSegments].sort((a, b) => a.segment[0] - b.segment[0]).map((seg) => {
+                    const cat = SB_CATEGORIES.find((c) => c.id === seg.category);
+                    const off = disabledSegs.has(seg.UUID);
+                    return (
+                      <div
+                        key={seg.UUID}
+                        className={`sb-segment-row${off ? " disabled" : ""}`}
+                        style={{ "--sb-color": cat?.color ?? "#888" } as React.CSSProperties}
+                        onClick={() => playerRef.current?.seekTo(seg.segment[0], true)}
+                      >
+                        <span className="sb-dot" />
+                        <span className="sb-segment-name">{cat?.label[language] ?? seg.category}</span>
+                        <span className="sb-time">{fmtTime(seg.segment[0])} → {fmtTime(seg.segment[1])}</span>
+                        <button
+                          type="button"
+                          className="sb-seg-toggle"
+                          title={off ? t("sbSegEnable") : t("sbSegDisable")}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDisabledSegs((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(seg.UUID)) next.delete(seg.UUID);
+                              else next.add(seg.UUID);
+                              return next;
+                            });
+                          }}
+                        >
+                          {off ? <SkipForward /> : <Square />}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
