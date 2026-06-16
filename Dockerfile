@@ -9,6 +9,9 @@ RUN bun run build
 # ---- runtime ----
 FROM oven/bun:1.3-slim
 WORKDIR /app
+RUN apt-get update && \
+    apt-get upgrade -y --no-install-recommends && \
+    rm -rf /var/lib/apt/lists/*
 COPY app/package.json app/bun.lock* ./
 RUN bun install --production
 COPY app/src ./src
