@@ -1,4 +1,8 @@
 import { XMLParser } from "fast-xml-parser";
+import { createRequire } from "module";
+const _require = createRequire(import.meta.url);
+const InnerTubeClient = _require("innertube.js");
+const _yt = new InnerTubeClient();
 
 const FETCH_HEADERS = {
   "User-Agent":
@@ -218,80 +222,42 @@ export async function fetchChannelAbout(channelId: string): Promise<ChannelAbout
   const cached = aboutCache.get(channelId);
   if (cached && Date.now() - cached.at < ABOUT_TTL) return cached.data;
 
-  const [res, aboutRes] = await Promise.all([
-    fetch(`https://www.youtube.com/channel/${channelId}`, { headers: FETCH_HEADERS }),
-    fetch(`https://www.youtube.com/channel/${channelId}/about`, { headers: FETCH_HEADERS }),
-  ]);
-  if (!res.ok) throw new Error(`channel page fetch failed (${res.status})`);
-  const html = await res.text();
-  const data = extractInitialData(html);
-  const meta = data?.metadata?.channelMetadataRenderer ?? {};
+  const data = await _yt.getChannel({ channelId });
 
-  // Parse /about tab for links, dates, view count
-  let links: ChannelLink[] = [];
-  let joinedDate = "";
-  let viewCount = "";
-  let handle = "";
-  if (aboutRes.ok) {
-    const aboutData = extractInitialData(await aboutRes.text());
-    const vm = deepCollect(aboutData, "aboutChannelViewModel")[0];
-    if (vm) {
-      // Strip "Joined " prefix — date is reformatted in the UI with the right locale
-      const rawJoined: string = vm.joinedDateText?.content ?? "";
-      joinedDate = rawJoined.replace(/^joined\s*/i, "").trim();
-      viewCount = (vm.viewCountText ?? "").replace(/\s*views?\s*/i, "").trim();
-      handle = vm.canonicalChannelUrl?.replace(/^https?:\/\/www\.youtube\.com\//, "") ?? "";
-      for (const l of deepCollect(aboutData, "channelExternalLinkViewModel")) {
-        const title = l?.title?.content ?? "";
-        const rawUrl: string = l?.link?.commandRuns?.[0]?.onTap?.innertubeCommand?.urlEndpoint?.url ?? "";
-        if (!title || !rawUrl) continue;
-        // YouTube wraps external links in a redirect — extract the real URL from `q=`
-        let url = rawUrl;
-        try {
-          const u = new URL(rawUrl);
-          const q = u.searchParams.get("q");
-          if (q) url = q;
-        } catch {}
-        links.push({ title, url });
-      }
-    }
-  }
+  const meta = deepCollect(data, "channelMetadataRenderer")[0] ?? {};
+  const avatar: string = meta.avatar?.thumbnails?.at(-1)?.url ?? "";
+  const title: string = meta.title ?? "";
+  const description: string = meta.description ?? "";
+  const handle: string =
+    (meta.vanityChannelUrl ?? "").replace(/^https?:\/\/www\.youtube\.com\//, "") ||
+    (meta.ownerUrls?.[0] ?? "").replace(/^https?:\/\/www\.youtube\.com\//, "");
 
-  // Banner lives in the (frequently restructured) header; try both layouts.
-  const bannerSources =
-    deepCollect(data?.header, "imageBannerViewModel")[0]?.image?.sources ??
-    data?.header?.c4TabbedHeaderRenderer?.banner?.thumbnails ??
-    [];
-  const banner = bannerSources.at(-1)?.url ?? "";
+  const banner: string =
+    deepCollect(data, "imageBannerViewModel")[0]?.image?.sources?.at(-1)?.url ?? "";
 
-  // Subscriber / video counts: gather the short metadata texts from the header.
-  // Prioritise the subscriber count string (contains "subscriber") so stats[0]
-  // is always the sub count, not a @handle or video count.
   const stats: string[] = [];
   const statsOther: string[] = [];
-  for (const parts of deepCollect(data?.header, "metadataParts")) {
+  for (const parts of deepCollect(data, "metadataParts")) {
     for (const p of Array.isArray(parts) ? parts : []) {
-      const t = p?.text?.content;
-      if (typeof t !== "string" || !t || t.length >= 40) continue;
+      const t: string = p?.text?.content ?? "";
+      if (!t || t.length >= 40) continue;
       if (/subscriber/i.test(t)) stats.push(t.replace(/\s*subscribers?\s*/i, "").trim());
       else if (/\bvideos?\b/i.test(t)) statsOther.push(t.replace(/\s*videos?\s*/i, "").trim());
-      else statsOther.push(t);
+      else if (!t.startsWith("@")) statsOther.push(t);
     }
   }
-  const subLegacy = data?.header?.c4TabbedHeaderRenderer?.subscriberCountText?.simpleText;
-  if (subLegacy && stats.length === 0) stats.push(subLegacy.replace(/\s*subscribers?\s*/i, "").trim());
   stats.push(...statsOther);
 
   const about: ChannelAbout = {
     channelId,
-    title: meta.title ?? "",
-    description: meta.description ?? "",
-    avatar: meta.avatar?.thumbnails?.at(-1)?.url ?? "",
+    title,
+    description,
+    avatar,
     banner,
     stats: [...new Set(stats)],
-    links,
-    joinedDate,
-    viewCount,
+    links: [],
+    joinedDate: "",
+    viewCount: "",
     handle,
   };
   aboutCache.set(channelId, { at: Date.now(), data: about });

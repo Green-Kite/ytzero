@@ -273,7 +273,7 @@ export async function syncChannel(channelId: string): Promise<{ added: number }>
 export async function refreshAvatarsBatch() {
   const rows = db
     .prepare(
-      "SELECT channel_id FROM channels ORDER BY COALESCE(avatar_checked_at, '1970-01-01') ASC LIMIT 5"
+      "SELECT channel_id FROM channels WHERE followed = 1 ORDER BY COALESCE(avatar_checked_at, '1970-01-01') ASC LIMIT 2"
     )
     .all() as { channel_id: string }[];
 
@@ -294,7 +294,7 @@ export async function refreshAvatarsBatch() {
       markChecked.run(channel_id);
       log.warn("channel.avatar_refresh_failed", { channelId: channel_id, error: e instanceof Error ? e.message : String(e) });
     }
-    if (i < rows.length - 1) await Bun.sleep(5_000);
+    if (i < rows.length - 1) await Bun.sleep(20_000);
   }
 }
 
@@ -387,10 +387,6 @@ export function startScheduler() {
   setInterval(() => refreshAll().catch((e) => log.error("refresh.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 10 * 60_000);
   log.info("scheduler.feed_refresh", { intervalMin: 10, batchSize: 10 });
 
-  // Avatar cron: fetch 5 channels every 5 minutes, 5 s gap between each
-  setTimeout(() => refreshAvatarsBatch().catch((e) => log.error("avatars.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 15_000);
-  setInterval(() => refreshAvatarsBatch().catch((e) => log.error("avatars.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 5 * 60_000);
-  log.info("scheduler.avatar_refresh", { intervalMin: 5, batchSize: 5 });
 
   // Duration backfill cron: fill `duration` for videos still missing it,
   // most-recent first, a small polite batch every few minutes.

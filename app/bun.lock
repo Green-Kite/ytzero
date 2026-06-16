@@ -7,6 +7,7 @@
       "dependencies": {
         "fast-xml-parser": "^4.5.0",
         "hono": "^4.6.0",
+        "innertube.js": "^1.1.5",
       },
       "devDependencies": {
         "@types/bun": "^1.1.10",
@@ -23,6 +24,8 @@
     "fast-xml-parser": ["fast-xml-parser@4.5.6", "", { "dependencies": { "strnum": "^1.0.5" }, "bin": { "fxparser": "src/cli/cli.js" } }, "sha512-Yd4vkROfJf8AuJrDIVMVmYfULKmIJszVsMv7Vo71aocsKgFxpdlpSHXSaInvyYfgw2PRuObQSW2GFpVMUjxu9A=="],
 
     "hono": ["hono@4.12.25", "", {}, "sha512-2NFaIyNVgJmBs/ecmtGzlmluTFs5cHEWGTdu0t1HBwYzoGXOL5nUQBRMXsXWla5i4KkG//QMzVP88m1+I3fdAQ=="],
+
+    "innertube.js": ["innertube.js@1.1.5", "", {}, "sha512-mC7uHKJ3ea+i5IuoKouYDNd9W1yZEECfullJ9HWLUb1QSl3Xx76H6O4+QQPWMxpBWZgMDLDNYBnsDOnvsUgqgA=="],
 
     "strnum": ["strnum@1.1.2", "", {}, "sha512-vrN+B7DBIoTTZjnPNewwhx6cBA/H+IS7rfW68n7XxC1y7uoiGQBxaKzqucGUgavX15dJgiGztLJ8vxuEzwqBdA=="],
 
