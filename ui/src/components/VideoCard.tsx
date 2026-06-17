@@ -311,7 +311,7 @@ export default function VideoCard({
             </div>
           )}
 
-          <div className="thumb-actions-zone" onClick={(e) => e.stopPropagation()}>
+          <div className="thumb-actions-zone">
             <div className="thumb-actions-peek" aria-hidden="true">
               <span /><span /><span /><span />
             </div>
