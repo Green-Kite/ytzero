@@ -165,10 +165,16 @@ function attachTags(videos: VideoRow[]) {
   });
 }
 
-/** WHERE fragment excluding videos that have a filter_only tag unless one of those tags is selected. */
+/** WHERE fragment excluding videos that have a filter_only tag unless one of those tags is selected.
+ *  For channels: hidden only when ALL channel tags are filter_only (not just any one). */
 function filterOnlySql(tagIds: number[]) {
-  const noFO = `(NOT EXISTS (SELECT 1 FROM video_tags vt2 JOIN tags t2 ON t2.id = vt2.tag_id WHERE vt2.video_id = v.video_id AND t2.filter_only = 1)
-     AND NOT EXISTS (SELECT 1 FROM channel_tags ct2 JOIN tags t2 ON t2.id = ct2.tag_id WHERE ct2.channel_id = v.channel_id AND t2.filter_only = 1))`;
+  // Video-level: exclude if video itself has any filter_only tag.
+  const noVideoFO = `NOT EXISTS (SELECT 1 FROM video_tags vt2 JOIN tags t2 ON t2.id = vt2.tag_id WHERE vt2.video_id = v.video_id AND t2.filter_only = 1)`;
+  // Channel-level: exclude only when channel has tags and every one of them is filter_only.
+  //   = channel has no tags  OR  channel has at least one non-filter_only tag
+  const noChannelFO = `(NOT EXISTS (SELECT 1 FROM channel_tags ct2 WHERE ct2.channel_id = v.channel_id)
+     OR EXISTS (SELECT 1 FROM channel_tags ct2 JOIN tags t2 ON t2.id = ct2.tag_id WHERE ct2.channel_id = v.channel_id AND t2.filter_only = 0))`;
+  const noFO = `(${noVideoFO} AND ${noChannelFO})`;
   if (tagIds.length === 0) return { sql: noFO, params: [] };
   const ph = tagIds.map(() => "?").join(",");
   return {
