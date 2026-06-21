@@ -1,8 +1,9 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { subscribe, emit } from "./events";
 import { Link, NavLink, Route, Routes, useNavigate, useSearchParams } from "react-router-dom";
-import { Archive, ChevronRight, Clock, History, Home, Menu, Play, Plus, Radio, Search, Settings, Clapperboard, ThumbsUp, Users } from "lucide-react";
+import { ChevronDown, ChevronRight, Menu, Play, Plus, Search, Users } from "lucide-react";
 import { api, type UserPlaylist, type Video } from "./api";
+import { splitNavItems, parseNavConfig, type NavConfigEntry } from "./nav";
 import { img } from "./img";
 import FeedPage from "./pages/FeedPage";
 import LivePage from "./pages/LivePage";
@@ -18,16 +19,6 @@ import SubscriptionsPage from "./pages/SubscriptionsPage";
 import LikedPage from "./pages/LikedPage";
 import { PlaylistIcon, PlaylistIconPicker } from "./components/PlaylistIcon";
 import { useI18n } from "./i18n";
-
-const NAV_STATIC = [
-  { to: "/", labelKey: "navToday", icon: Home, end: true },
-  { to: "/live", labelKey: "navLive", icon: Radio },
-  { to: "/watchlist", labelKey: "navWatchlist", icon: Clock },
-  { to: "/liked", labelKey: "navLiked", icon: ThumbsUp },
-  { to: "/history", labelKey: "navHistory", icon: History },
-  { to: "/archive", labelKey: "navArchive", icon: Archive },
-  { to: "/settings", labelKey: "navSettings", icon: Settings },
-] as const;
 
 type RecentChannel = { channel_id: string; title: string; thumbnail: string; latest_thumbnail: string | null; latest_video_id: string | null };
 
@@ -246,8 +237,9 @@ export default function App() {
   const [liveCount, setLiveCount] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   const [showShorts, setShowShorts] = useState(false);
-  const [shortsTab, setShortsTab] = useState(false);
   const [appName, setAppName] = useState("YT Zero");
+  const [navConfig, setNavConfig] = useState<NavConfigEntry[]>(() => parseNavConfig(null));
+  const [showHidden, setShowHidden] = useState(false);
 
   const play = useCallback((v: Video) => navigate(`/watch/${v.video_id}`), [navigate]);
 
@@ -264,14 +256,20 @@ export default function App() {
   const loadSettings = useCallback(() => {
     api.settings().then((r) => {
       setShowShorts(r.settings.show_shorts === "1");
-      setShortsTab(r.settings.shorts_tab === "1");
       setAppName(r.settings.app_name || "YT Zero");
+      const raw = r.settings.sidebar_nav;
+      const navCfg = parseNavConfig(raw);
+      if (!raw && r.settings.shorts_tab === "1") {
+        const entry = navCfg.find((e) => e.key === "/shorts");
+        if (entry) entry.hidden = false;
+      }
+      setNavConfig(navCfg);
     }).catch(() => {});
   }, []);
 
   useEffect(loadSettings, [loadSettings]);
-  useEffect(() => subscribe("shorts-tab-changed", loadSettings), [loadSettings]);
   useEffect(() => subscribe("app-name-changed", loadSettings), [loadSettings]);
+  useEffect(() => subscribe("sidebar-nav-changed", loadSettings), [loadSettings]);
   useEffect(() => { document.title = appName; }, [appName]);
 
   useEffect(() => {
@@ -285,26 +283,37 @@ export default function App() {
     return () => clearInterval(t);
   }, []);
 
+  const { visible: navItems, hidden: hiddenNavItems } = splitNavItems(navConfig);
+
+  const renderNavLink = (item: (typeof navItems)[number]) => {
+    const Icon = item.icon;
+    return (
+      <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
+        <Icon />
+        <span className="nav-label">{t(item.labelKey)}</span>
+        {item.to === "/live" && liveCount > 0 && <span className="badge">{liveCount}</span>}
+      </NavLink>
+    );
+  };
+
   return (
     <div className="layout">
       <TopBar appName={appName} />
       <div className="layout-body">
         <aside className="sidebar">
-          {NAV_STATIC.map((item) => (
-            <NavLink key={item.to} to={item.to} end={"end" in item ? item.end : undefined} className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
-              {(() => { const Icon = item.icon; return <Icon />; })()}
-              <span className="nav-label">{t(item.labelKey)}</span>
-              {item.to === "/live" && liveCount > 0 && <span className="badge">{liveCount}</span>}
-            </NavLink>
-          )).flatMap((el, i) =>
-            i === 0 && (showShorts || shortsTab)
-              ? [el, (
-                <NavLink key="/shorts" to="/shorts" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
-                  <Clapperboard />
-                  <span className="nav-label">{t("navShorts")}</span>
-                </NavLink>
-              )]
-              : [el]
+          {navItems.map(renderNavLink)}
+          {hiddenNavItems.length > 0 && (
+            <>
+              <button
+                className="nav-more"
+                aria-label={showHidden ? t("showLess") : t("showMore")}
+                aria-expanded={showHidden}
+                onClick={() => setShowHidden((v) => !v)}
+              >
+                <ChevronDown className={`nav-more-chevron${showHidden ? " open" : ""}`} />
+              </button>
+              {showHidden && hiddenNavItems.map(renderNavLink)}
+            </>
           )}
           <SidebarSubscriptions />
           <SidebarPlaylists />

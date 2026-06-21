@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Check, Clock, FileText, Filter, FolderUp, LoaderCircle, ListMusic, MonitorPlay, Pencil, Plus, RefreshCw, ShieldCheck, Tags, Trash2, Tv, UserMinus, UserPlus, X, Zap } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Clock, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, LoaderCircle, ListMusic, MonitorPlay, Pencil, Plus, RefreshCw, ShieldCheck, Tags, Trash2, Tv, UserMinus, UserPlus, X, Zap } from "lucide-react";
 import { api, type AppLogs, type Channel, type ChildLockStatus, type FilterRule, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES } from "../api";
+import { NAV_ITEMS, normalizeNav, parseNavConfig, type NavConfigEntry } from "../nav";
 import { img } from "../img";
 import TagChip from "../components/TagChip";
 import Tooltip from "../components/Tooltip";
@@ -405,6 +406,101 @@ function FilterRuleGroups({ rules, channels, onSave, onRemove }: {
   );
 }
 
+function SidebarNavEditor({ value, onChange }: { value: NavConfigEntry[]; onChange: (next: NavConfigEntry[]) => void }) {
+  const { t } = useI18n();
+  const [dragKey, setDragKey] = useState<string | null>(null);
+  const byKey = new Map(NAV_ITEMS.map((i) => [i.to, i] as const));
+  const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const prevTops = useRef<Map<string, number>>(new Map());
+  const flipAnims = useRef<Map<string, Animation>>(new Map());
+
+  // FLIP: animate every item from its previous position to the new one whenever
+  // the order changes, so reordering and hiding read as smooth motion. The item
+  // being dragged is skipped — it already tracks the cursor via the native ghost.
+  //
+  // Position is read via offsetTop (a layout metric) rather than
+  // getBoundingClientRect, which would include the in-flight FLIP transform and
+  // feed corrupted positions back in, compounding into jumps on rapid reorders.
+  useLayoutEffect(() => {
+    itemRefs.current.forEach((el, key) => {
+      const prev = prevTops.current.get(key);
+      const top = el.offsetTop;
+      prevTops.current.set(key, top);
+      if (prev === undefined || key === dragKey) return;
+      const dy = prev - top;
+      if (!dy) return;
+      flipAnims.current.get(key)?.cancel();
+      flipAnims.current.set(
+        key,
+        el.animate([{ transform: `translateY(${dy}px)` }, { transform: "translateY(0)" }], { duration: 180, easing: "cubic-bezier(0.2, 0, 0, 1)" }),
+      );
+    });
+  });
+
+  const move = (from: number, to: number) => {
+    if (to < 0 || to >= value.length || from === to) return;
+    const next = value.slice();
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    onChange(next);
+  };
+
+  const toggleHidden = (key: string) =>
+    onChange(value.map((v) => (v.key === key ? { ...v, hidden: !v.hidden } : v)));
+
+  const firstHidden = value.findIndex((e) => e.hidden);
+
+  return (
+    <div className={`sidebar-order-list${dragKey ? " is-dragging" : ""}`}>
+      {value.map((entry, i) => {
+        const item = byKey.get(entry.key);
+        if (!item) return null;
+        const Icon = item.icon;
+        return (
+          <div key={entry.key} className="sidebar-order-row">
+            {i === firstHidden && firstHidden > 0 && (
+              <div className="sidebar-order-divider"><span>{t("hiddenItems")}</span></div>
+            )}
+            <div
+              ref={(el) => { if (el) itemRefs.current.set(entry.key, el); else itemRefs.current.delete(entry.key); }}
+              className={`sidebar-order-item${entry.hidden ? " is-hidden" : ""}${dragKey === entry.key ? " dragging" : ""}`}
+              draggable
+              onDragStart={(e) => { setDragKey(entry.key); e.dataTransfer.effectAllowed = "move"; }}
+              onDragEnd={() => setDragKey(null)}
+              onDragOver={(e) => {
+                e.preventDefault();
+                if (!dragKey || dragKey === entry.key) return;
+                const from = value.findIndex((v) => v.key === dragKey);
+                if (from === -1 || from === i) return;
+                // Only swap once the cursor passes the target's midpoint in the
+                // direction of travel — prevents jittery back-and-forth reorders.
+                const rect = e.currentTarget.getBoundingClientRect();
+                const past = e.clientY - rect.top > rect.height / 2;
+                if ((from < i && past) || (from > i && !past)) move(from, i);
+              }}
+            >
+              <span className="sidebar-order-grip" aria-hidden="true"><GripVertical size={16} /></span>
+              <Icon size={17} className="sidebar-order-icon" />
+              <span className="sidebar-order-name">{t(item.labelKey)}</span>
+              <div className="sidebar-order-actions">
+                <button className="icon-btn" title={t("moveUp")} disabled={i === 0} onClick={() => move(i, i - 1)}>
+                  <ChevronUp size={15} />
+                </button>
+                <button className="icon-btn" title={t("moveDown")} disabled={i === value.length - 1} onClick={() => move(i, i + 1)}>
+                  <ChevronDown size={15} />
+                </button>
+                <button className="icon-btn" title={entry.hidden ? t("showItem") : t("hideItem")} onClick={() => toggleHidden(entry.key)}>
+                  {entry.hidden ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function SettingsPage({ showToast }: { showToast: (m: string) => void }) {
   const { t, language, setLanguage } = useI18n();
   const navigate = useNavigate();
@@ -446,7 +542,9 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [appName, setAppName] = useState("YT Zero");
   const [appNameInput, setAppNameInput] = useState("YT Zero");
   const [showShorts, setShowShorts] = useState(false);
-  const [shortsTab, setShortsTab] = useState(false);
+  const [showTopChannels, setShowTopChannels] = useState(true);
+  const [navConfig, setNavConfig] = useState<NavConfigEntry[]>(() => parseNavConfig(null));
+  const navSaveTimer = useRef<number | null>(null);
   const [playerHl, setPlayerHl] = useState("pl");
   const [playerCc, setPlayerCc] = useState(false);
   const [playerQuality, setPlayerQuality] = useState("auto");
@@ -543,7 +641,14 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         setAppName(name);
         setAppNameInput(name);
         setShowShorts(r.settings.show_shorts === "1");
-        setShortsTab(r.settings.shorts_tab === "1");
+        setShowTopChannels(r.settings.show_top_channels !== "0");
+        const raw = r.settings.sidebar_nav;
+        const navCfg = parseNavConfig(raw);
+        if (!raw && r.settings.shorts_tab === "1") {
+          const entry = navCfg.find((e) => e.key === "/shorts");
+          if (entry) entry.hidden = false;
+        }
+        setNavConfig(normalizeNav(navCfg));
         setPlayerHl(r.settings.player_hl);
         setPlayerCc(r.settings.player_cc === "1");
         setPlayerQuality(r.settings.player_quality);
@@ -570,13 +675,28 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     showToast(next ? t("shortsVisible") : t("shortsHidden"));
   };
 
-  const toggleShortsTab = async () => {
-    const next = !shortsTab;
-    setShortsTab(next);
-    await api.updateSettings({ shorts_tab: next ? "1" : "0" });
-    emit("shorts-tab-changed");
+  const toggleTopChannels = async () => {
+    const next = !showTopChannels;
+    setShowTopChannels(next);
+    await api.updateSettings({ show_top_channels: next ? "1" : "0" });
+    emit("top-channels-changed");
     showToast(t("displaySettingsSaved"));
   };
+
+  // Reorder/hide is interactive (drag fires many updates) — reflect locally at
+  // once, then persist on a short debounce and notify the sidebar to re-read.
+  const persistNavConfig = (next: NavConfigEntry[]) => {
+    const normalized = normalizeNav(next);
+    setNavConfig(normalized);
+    if (navSaveTimer.current) window.clearTimeout(navSaveTimer.current);
+    navSaveTimer.current = window.setTimeout(() => {
+      api.updateSettings({ sidebar_nav: JSON.stringify(normalized) })
+        .then(() => { emit("sidebar-nav-changed"); showToast(t("displaySettingsSaved")); })
+        .catch(console.error);
+    }, 400);
+  };
+
+  const resetNavConfig = () => persistNavConfig(parseNavConfig(null));
 
   const saveAppName = async () => {
     const name = appNameInput.trim() || "YT Zero";
@@ -1208,14 +1328,14 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
 
           <div className="switch-row">
             <div>
-              <div className="switch-label">{t("showShortsTab")}</div>
-              <div className="switch-sub">{t("showShortsTabHint")}</div>
+              <div className="switch-label">{t("showTopChannels")}</div>
+              <div className="switch-sub">{t("showTopChannelsHint")}</div>
             </div>
             <button
-              className={`switch${shortsTab ? " on" : ""}`}
+              className={`switch${showTopChannels ? " on" : ""}`}
               role="switch"
-              aria-checked={shortsTab}
-              onClick={toggleShortsTab}
+              aria-checked={showTopChannels}
+              onClick={toggleTopChannels}
             />
           </div>
 
@@ -1332,6 +1452,17 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
               })}
             </div>
           )}
+
+          <hr className="section-divider" />
+
+          <div className="sidebar-order-head">
+            <div>
+              <div className="switch-label">{t("sidebarOrderTitle")}</div>
+              <div className="switch-sub">{t("sidebarOrderHint")}</div>
+            </div>
+            <button className="btn" onClick={resetNavConfig}>{t("resetOrder")}</button>
+          </div>
+          <SidebarNavEditor value={navConfig} onChange={persistNavConfig} />
         </section>
       )}
 

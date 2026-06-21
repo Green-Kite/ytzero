@@ -117,6 +117,7 @@ export default function FeedPage({
   const [gridSize, setGridSize] = useState<GridSize>(
     () => (localStorage.getItem("gridSize") as GridSize) ?? "sm"
   );
+  const [showTopChannels, setShowTopChannels] = useState(true);
   const loadMoreRef = useRef<HTMLButtonElement>(null);
   const inProgressScroll = useHScroll();
   const queuedScroll = useHScroll();
@@ -177,8 +178,15 @@ export default function FeedPage({
     loadInProgress();
   }, [loadTags, loadQueued, loadInProgress]);
 
+  const loadTopChannelsSetting = useCallback(() => {
+    api.settings().then((r) => setShowTopChannels(r.settings.show_top_channels !== "0")).catch(() => {});
+  }, []);
+
+  useEffect(() => { loadTopChannelsSetting(); }, [loadTopChannelsSetting]);
+
   useEffect(() => subscribe("tags-changed", loadTags), [loadTags]);
   useEffect(() => subscribe("queue-changed", loadQueued), [loadQueued]);
+  useEffect(() => subscribe("top-channels-changed", loadTopChannelsSetting), [loadTopChannelsSetting]);
 
   useEffect(() => {
     if (!q) { setYtResults([]); return; }
@@ -286,7 +294,7 @@ export default function FeedPage({
         </p>
       )}
 
-      {!q && <ChannelAvatarRow />}
+      {!q && showTopChannels && <ChannelAvatarRow />}
 
       {inProgress.length > 0 && !q && (
         <div className="continue-watching-section">

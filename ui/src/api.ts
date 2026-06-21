@@ -130,6 +130,8 @@ export interface AppSettings {
   child_lock_enabled: string;
   app_name: string;
   shorts_tab: string;
+  show_top_channels: string;
+  sidebar_nav: string;
   sponsorblock_enabled: string;
   sponsorblock_categories: string;
 }
