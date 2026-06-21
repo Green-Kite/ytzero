@@ -22,18 +22,21 @@ export default defineConfig({
         ],
       },
       workbox: {
-        navigateFallback: "/index.html",
+        cleanupOutdatedCaches: true,
+        // Explicitly disable the plugin's default navigateFallback ("index.html").
+        // Serving the *precached* index.html
+        // for navigations strands iOS clients after a redeploy — the cached
+        // shell points at hashed bundles the server has since deleted, so the
+        // app never boots ("no content"). This is a self-hosted, online-first
+        // reader, so let navigations hit the network (the server's catch-all
+        // always returns a fresh index.html with valid asset refs). Even a
+        // stale, stuck service worker then can't trap the user on a dead shell.
+        navigateFallback: null as unknown as string,
         runtimeCaching: [
           {
-            urlPattern: /^\/api\//,
-            handler: "NetworkFirst",
-            options: {
-              cacheName: "api-cache",
-              networkTimeoutSeconds: 10,
-            },
-          },
-          {
-            urlPattern: /\/imgcache\//,
+            // Images go through /api/img?u=… — cache those aggressively.
+            // (The previous /imgcache/ pattern never matched anything.)
+            urlPattern: ({ url }) => url.pathname.startsWith("/api/img"),
             handler: "CacheFirst",
             options: {
               cacheName: "image-cache",
