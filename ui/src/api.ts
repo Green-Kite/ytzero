@@ -222,6 +222,7 @@ export const api = {
     only_shorts?: boolean;
     liked?: boolean;
     all_sources?: boolean;
+    show_all?: boolean;
     limit?: number;
   }) => {
     const qs = new URLSearchParams();
@@ -234,6 +235,7 @@ export const api = {
     if (p.only_shorts) qs.set("only_shorts", "1");
     if (p.liked) qs.set("liked", "1");
     if (p.all_sources) qs.set("all_sources", "1");
+    if (p.show_all) qs.set("show_all", "1");
     if (p.limit) qs.set("limit", String(p.limit));
     return http<{ videos: Video[] }>(`/feed?${qs}`);
   },

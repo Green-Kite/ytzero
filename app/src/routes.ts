@@ -279,8 +279,10 @@ api.get("/feed", (c) => {
     where.push(f.sql);
     params.push(...f.params);
   }
-  // Exclude filter_only-tagged videos unless the relevant tag is actively selected
-  if (!channel && !allSources) {
+  // Exclude filter_only-tagged videos unless the relevant tag is actively selected.
+  // show_all=1 bypasses this entirely and shows everything regardless of filter_only tags.
+  const showAll = c.req.query("show_all") === "1";
+  if (!channel && !allSources && !showAll) {
     const fo = filterOnlySql(tagIds);
     where.push(fo.sql);
     params.push(...fo.params);

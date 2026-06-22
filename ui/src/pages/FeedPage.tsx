@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { subscribe } from "../events";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Clock, Grid2X2, Grid3X3, Inbox, RefreshCw, Square } from "lucide-react";
+import { Clock, Eye, Grid2X2, Grid3X3, Inbox, RefreshCw, Square } from "lucide-react";
 import { api, type Bucket, type Channel, type SearchResult, type Tag, type Video } from "../api";
 import { useI18n } from "../i18n";
 import { img } from "../img";
@@ -109,6 +109,7 @@ export default function FeedPage({
   const [selectedTags, setSelectedTags] = useState<number[]>(() => {
     try { return JSON.parse(sessionStorage.getItem("feedTags") ?? "[]"); } catch { return []; }
   });
+  const [showAll, setShowAll] = useState(() => sessionStorage.getItem("feedShowAll") === "1");
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -147,14 +148,14 @@ export default function FeedPage({
     if (requestedPage === 0) setLoading(true);
     else setLoadingMore(true);
     try {
-      const feed = await api.feed({ tags: selectedTags, q, page: requestedPage });
+      const feed = await api.feed({ tags: selectedTags, q, page: requestedPage, show_all: showAll });
       setVideos((prev) => (requestedPage === 0 ? feed.videos : [...prev, ...feed.videos]));
       setHasMore(feed.videos.length === 40);
     } finally {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [selectedTags, q, page]);
+  }, [selectedTags, q, page, showAll]);
 
   useEffect(() => {
     load().catch(console.error);
@@ -225,6 +226,17 @@ export default function FeedPage({
     });
   };
 
+  const toggleShowAll = () => {
+    setLoading(true);
+    setPage(0);
+    setShowAll((s) => {
+      const next = !s;
+      if (next) sessionStorage.setItem("feedShowAll", "1");
+      else sessionStorage.removeItem("feedShowAll");
+      return next;
+    });
+  };
+
   const clearTags = () => {
     setLoading(true);
     setPage(0);
@@ -268,7 +280,22 @@ export default function FeedPage({
   return (
     <>
       <div className="toolbar" ref={hScrollWrapRef}>
-        <TagFilterBar tags={tags} selected={selectedTags} onToggle={toggleTag} onClearAll={clearTags} />
+        <TagFilterBar
+          tags={tags}
+          selected={selectedTags}
+          onToggle={toggleTag}
+          onClearAll={clearTags}
+          suffix={
+            <button
+              className={`chip${showAll ? " active" : ""}`}
+              onClick={toggleShowAll}
+              title={t("showAll")}
+            >
+              <Eye size={13} />
+              {t("showAll")}
+            </button>
+          }
+        />
         <div className="toolbar-right" style={{ display: "flex", gap: 4, alignItems: "center" }}>
           <div className="grid-size-toggle">
             {GRID_SIZES.map((g) => (
