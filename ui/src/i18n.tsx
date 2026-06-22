@@ -243,7 +243,7 @@ const labels = {
     searchPlaceholder: "Szukaj...",
     clear: "Wyczyść",
     clearFilters: "Wyczyść filtry",
-    showAll: "Pokaż wszystko",
+    showAll: "Wszystkie",
     yes: "Tak",
     cancel: "Anuluj",
     save: "Zapisz",
