@@ -137,6 +137,32 @@ Use either Docker or a local Bun installation.
 
 ### Docker
 
+Use the published GHCR image:
+
+```yaml
+services:
+  ytzero:
+    image: ghcr.io/pelski/ytzero:latest
+    container_name: ytzero
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./data:/data
+    environment:
+      - REFRESH_INTERVAL_MINUTES=5
+      - DB_PATH=/data/db/ytzero.db
+      - IMG_CACHE_DIR=/data/imgcache
+    restart: unless-stopped
+```
+
+Start it:
+
+```bash
+docker compose up -d
+```
+
+Or build locally from this repository:
+
 ```bash
 docker compose up --build -d
 ```
@@ -264,7 +290,14 @@ cp -R data data.backup
 docker compose up -d
 ```
 
-To update a Docker install after pulling new code:
+To update a Docker install that uses the published GHCR image:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+To update a Docker install that builds locally after pulling new code:
 
 ```bash
 docker compose up --build -d
