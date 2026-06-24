@@ -197,6 +197,80 @@ function deepCollect(node: any, key: string, out: any[] = []): any[] {
   return out;
 }
 
+function isSubscriberText(text: string): boolean {
+  return /(subscribers?|subskryb|abonn|suscrip|inscrito|iscritt)/i.test(text);
+}
+
+function isVideoCountText(text: string): boolean {
+  return /\b(videos?|film(?:y|ów)?)\b/i.test(text);
+}
+
+function cleanSubscriberCount(text: string): string {
+  return text
+    .replace(/subscribers?/gi, "")
+    .replace(/subskrybent(?:ów|y)?/gi, "")
+    .replace(/subskrypcji/gi, "")
+    .replace(/abonn(?:és|enten)?/gi, "")
+    .replace(/suscriptores?/gi, "")
+    .replace(/inscritos?/gi, "")
+    .replace(/iscritti/gi, "")
+    .replace(/[•·]/g, "")
+    .trim();
+}
+
+function cleanVideoCount(text: string): string {
+  return text
+    .replace(/\s*(videos?|film(?:y|ów)?)\s*/gi, "")
+    .replace(/[•·]/g, "")
+    .trim();
+}
+
+function textFromMetadataPart(part: any): string[] {
+  return [part?.text?.content, part?.accessibilityLabel]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+}
+
+function extractHeaderStats(data: any): { subscriberCount: string; stats: string[] } {
+  const pageHeader = deepCollect(data, "pageHeaderRenderer")[0];
+  const headerMetadata = pageHeader?.content?.pageHeaderViewModel?.metadata?.contentMetadataViewModel;
+  const metadataRows = Array.isArray(headerMetadata?.metadataRows) ? headerMetadata.metadataRows : [];
+  const stats: string[] = [];
+  let subscriberCount = "";
+
+  for (const row of metadataRows) {
+    for (const part of Array.isArray(row?.metadataParts) ? row.metadataParts : []) {
+      const texts = textFromMetadataPart(part);
+      const visible = texts[0] ?? "";
+      const searchable = texts.join(" ");
+      if (!visible || visible.length >= 80) continue;
+      if (visible.startsWith("@")) continue;
+      if (isSubscriberText(searchable)) {
+        subscriberCount ||= cleanSubscriberCount(visible);
+      } else if (isVideoCountText(searchable)) {
+        stats.push(cleanVideoCount(visible));
+      }
+    }
+  }
+
+  if (subscriberCount || stats.length > 0) {
+    return { subscriberCount, stats: [...new Set(stats.filter(Boolean))] };
+  }
+
+  const fallbackStats: string[] = [];
+  for (const parts of deepCollect(data, "metadataParts")) {
+    for (const part of Array.isArray(parts) ? parts : []) {
+      const texts = textFromMetadataPart(part);
+      const visible = texts[0] ?? "";
+      const searchable = texts.join(" ");
+      if (!visible || visible.length >= 80 || visible.startsWith("@")) continue;
+      if (isSubscriberText(searchable)) subscriberCount ||= cleanSubscriberCount(visible);
+      else if (isVideoCountText(searchable)) fallbackStats.push(cleanVideoCount(visible));
+    }
+    if (subscriberCount) break;
+  }
+  return { subscriberCount, stats: [...new Set(fallbackStats.filter(Boolean))] };
+}
+
 export interface ChannelLink {
   title: string;
   url: string;
@@ -208,11 +282,19 @@ export interface ChannelAbout {
   description: string;
   avatar: string;
   banner: string;
+  subscriberCount: string;
   stats: string[];
   links: ChannelLink[];
   joinedDate: string;
   viewCount: string;
   handle: string;
+}
+
+export interface WatchSubscriberCount {
+  subscriberCount: string;
+  videoId: string;
+  ownerChannelId: string;
+  ownerTitle: string;
 }
 
 const aboutCache = new Map<string, { at: number; data: ChannelAbout }>();
@@ -235,18 +317,7 @@ export async function fetchChannelAbout(channelId: string): Promise<ChannelAbout
   const banner: string =
     deepCollect(data, "imageBannerViewModel")[0]?.image?.sources?.at(-1)?.url ?? "";
 
-  const stats: string[] = [];
-  const statsOther: string[] = [];
-  for (const parts of deepCollect(data, "metadataParts")) {
-    for (const p of Array.isArray(parts) ? parts : []) {
-      const t: string = p?.text?.content ?? "";
-      if (!t || t.length >= 40) continue;
-      if (/subscriber/i.test(t)) stats.push(t.replace(/\s*subscribers?\s*/i, "").trim());
-      else if (/\bvideos?\b/i.test(t)) statsOther.push(t.replace(/\s*videos?\s*/i, "").trim());
-      else if (!t.startsWith("@")) statsOther.push(t);
-    }
-  }
-  stats.push(...statsOther);
+  const { subscriberCount, stats } = extractHeaderStats(data);
 
   const about: ChannelAbout = {
     channelId,
@@ -254,6 +325,7 @@ export async function fetchChannelAbout(channelId: string): Promise<ChannelAbout
     description,
     avatar,
     banner,
+    subscriberCount,
     stats: [...new Set(stats)],
     links: [],
     joinedDate: "",
@@ -262,6 +334,43 @@ export async function fetchChannelAbout(channelId: string): Promise<ChannelAbout
   };
   aboutCache.set(channelId, { at: Date.now(), data: about });
   return about;
+}
+
+function extractSubscriberCountText(node: any): string {
+  const simple = node?.simpleText;
+  if (typeof simple === "string" && isSubscriberText(simple)) {
+    return cleanSubscriberCount(simple);
+  }
+  const label = node?.accessibility?.accessibilityData?.label;
+  if (typeof label === "string" && isSubscriberText(label)) {
+    return cleanSubscriberCount(label);
+  }
+  return "";
+}
+
+export async function fetchVideoOwnerSubscriberCount(videoId: string): Promise<WatchSubscriberCount | null> {
+  const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, { headers: FETCH_HEADERS });
+  if (!res.ok) return null;
+  const data = extractInitialData(await res.text());
+  const owner = deepCollect(data, "videoOwnerRenderer")[0];
+  if (!owner) return null;
+  const subscriberCount = extractSubscriberCountText(owner.subscriberCountText);
+  if (!subscriberCount) return null;
+  return {
+    subscriberCount,
+    videoId,
+    ownerChannelId: owner.navigationEndpoint?.browseEndpoint?.browseId ?? "",
+    ownerTitle: owner.title?.runs?.[0]?.text ?? owner.title?.simpleText ?? "",
+  };
+}
+
+export async function fetchChannelSubscriberCountFromWatch(channelId: string): Promise<WatchSubscriberCount | null> {
+  const feed = await fetchChannelFeed(channelId);
+  for (const video of feed.videos.slice(0, 3)) {
+    const result = await fetchVideoOwnerSubscriberCount(video.videoId);
+    if (result?.subscriberCount) return result;
+  }
+  return null;
 }
 
 export interface PlaylistInfo {

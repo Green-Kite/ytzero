@@ -5,6 +5,7 @@ import {
   fetchChannelAbout,
   fetchChannelFeed,
   fetchChannelPlaylists,
+  fetchChannelSubscriberCountFromWatch,
   fetchChannelVideosDurations,
   fetchPlaylistVideos,
   fetchVideoChapters,
@@ -720,18 +721,29 @@ function persistChannelAbout(channelId: string, about: ChannelAbout) {
     `UPDATE channels SET about_json = ?, about_fetched_at = datetime('now'),
        thumbnail = COALESCE(?, thumbnail), title = COALESCE(?, title), subscriber_count = COALESCE(?, subscriber_count)
      WHERE channel_id = ?`
-  ).run(JSON.stringify(about), about.avatar || null, about.title || null, about.stats[0] ?? null, channelId);
+  ).run(JSON.stringify(about), about.avatar || null, about.title || null, about.subscriberCount || null, channelId);
+}
+
+function normalizeCachedChannelAbout(about: ChannelAbout): ChannelAbout {
+  return {
+    ...about,
+    subscriberCount: about.subscriberCount ?? "",
+  };
 }
 
 /** Fetch about from YouTube, persist it, and backfill video durations. */
 async function refreshChannelAbout(channelId: string): Promise<ChannelAbout> {
   const about = await fetchChannelAbout(channelId);
-  persistChannelAbout(channelId, about);
+  const watchSubscriber = about.subscriberCount ? null : await fetchChannelSubscriberCountFromWatch(channelId).catch(() => null);
+  const aboutForStorage = watchSubscriber?.subscriberCount
+    ? { ...about, subscriberCount: watchSubscriber.subscriberCount }
+    : about;
+  persistChannelAbout(channelId, aboutForStorage);
   fetchChannelVideosDurations(channelId).then((durations) => {
     const upd = db.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND duration IS NULL");
     for (const d of durations) upd.run(d.duration, d.videoId);
   }).catch(() => {});
-  return about;
+  return aboutForStorage;
 }
 
 api.get("/channels/:id/about", async (c) => {
@@ -745,8 +757,8 @@ api.get("/channels/:id/about", async (c) => {
 
   // Serve the cached about from the DB; only touch YouTube when it's missing
   // or stale (and then in the background, so the page never waits on it).
-  const cachedRow = db.prepare("SELECT about_json, about_fetched_at FROM channels WHERE channel_id = ?")
-    .get(channelId) as { about_json: string | null; about_fetched_at: string | null } | null;
+  const cachedRow = db.prepare("SELECT about_json, about_fetched_at, subscriber_count FROM channels WHERE channel_id = ?")
+    .get(channelId) as { about_json: string | null; about_fetched_at: string | null; subscriber_count: string | null } | null;
 
   if (cachedRow?.about_json) {
     if (ageMs(cachedRow.about_fetched_at) > ABOUT_DB_TTL) {
@@ -754,7 +766,11 @@ api.get("/channels/:id/about", async (c) => {
         log.warn("channel.about.refresh_failed", { channelId, error: e instanceof Error ? e.message : String(e) }));
     }
     try {
-      return c.json({ ...(JSON.parse(cachedRow.about_json) as ChannelAbout), counts });
+      const cachedAbout = JSON.parse(cachedRow.about_json) as Partial<ChannelAbout>;
+      if (!("subscriberCount" in cachedAbout)) {
+        return c.json({ ...(await refreshChannelAbout(channelId)), counts });
+      }
+      return c.json({ ...normalizeCachedChannelAbout(cachedAbout as ChannelAbout), counts });
     } catch {
       // corrupted cache — fall through to a fresh fetch
     }
@@ -776,7 +792,8 @@ api.get("/channels/:id/about", async (c) => {
       description: "",
       avatar: ch.thumbnail ?? "",
       banner: "",
-      stats: ch.subscriber_count ? [ch.subscriber_count] : [],
+      subscriberCount: ch.subscriber_count ?? "",
+      stats: [],
       links: [],
       joinedDate: "",
       viewCount: "",

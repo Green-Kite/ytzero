@@ -17,5 +17,6 @@ app.get("*", serveStatic({ path: `${uiDir}/index.html` }));
 startScheduler();
 
 const port = Number(process.env.PORT ?? 3001);
-const server = Bun.serve({ port, fetch: app.fetch });
-log.info("app.listen", { url: String(server.url), port, uiDir });
+const idleTimeout = Number(process.env.IDLE_TIMEOUT_SECONDS ?? 120);
+const server = Bun.serve({ port, idleTimeout, fetch: app.fetch });
+log.info("app.listen", { url: String(server.url), port, uiDir, idleTimeout });

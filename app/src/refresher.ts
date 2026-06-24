@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { checkIsShort, fetchChannelAbout, fetchChannelFeed, fetchChannelPlaylists, fetchChannelVideos, fetchChannelVideosDurations, fetchLiveInfo, fetchPlaylistFeed, fetchVideoInfo } from "./youtube";
+import { checkIsShort, fetchChannelAbout, fetchChannelFeed, fetchChannelPlaylists, fetchChannelSubscriberCountFromWatch, fetchChannelVideos, fetchChannelVideosDurations, fetchLiveInfo, fetchPlaylistFeed, fetchVideoInfo } from "./youtube";
 import { applyAutoTags } from "./autotags";
 import { applyPlaylistRulesToVideo } from "./userPlaylists";
 import { applyFilterRules } from "./filterRules";
@@ -24,25 +24,40 @@ const videoExists = db.prepare("SELECT 1 FROM videos WHERE video_id = ?");
 const MAX_SYNC_PLAYLISTS = 25;
 const PLAYLIST_SYNC_DELAY_MS = 800;
 
-async function refreshChannelMetadata(channelId: string) {
+async function refreshChannelMetadata(channelId: string, forceSubscriberRefresh = false) {
   const about = await fetchChannelAbout(channelId);
+  const watchSubscriber = about.subscriberCount ? null : await fetchChannelSubscriberCountFromWatch(channelId).catch(() => null);
+  const subscriberCount = about.subscriberCount || watchSubscriber?.subscriberCount || null;
+  const aboutForStorage = subscriberCount && subscriberCount !== about.subscriberCount
+    ? { ...about, subscriberCount }
+    : about;
   db.prepare(
     `UPDATE channels SET
        about_json = ?,
        about_fetched_at = datetime('now'),
        thumbnail = COALESCE(?, thumbnail),
        title = COALESCE(?, title),
-       subscriber_count = COALESCE(?, subscriber_count),
+       subscriber_count = CASE WHEN ? = 1 THEN ? ELSE COALESCE(?, subscriber_count) END,
        avatar_checked_at = datetime('now')
      WHERE channel_id = ?`
   ).run(
-    JSON.stringify(about),
+    JSON.stringify(aboutForStorage),
     about.avatar || null,
     about.title || null,
-    about.stats[0] ?? null,
+    forceSubscriberRefresh ? 1 : 0,
+    subscriberCount,
+    subscriberCount,
     channelId
   );
-  log.info("channel.metadata_refreshed", { channelId, title: about.title, handle: about.handle });
+  log.info("channel.metadata_refreshed", {
+    channelId,
+    title: about.title,
+    handle: about.handle,
+    subscriberCount,
+    subscriberCountSource: about.subscriberCount ? "channel-header" : watchSubscriber ? "watch-owner" : null,
+    watchOwnerChannelId: watchSubscriber?.ownerChannelId || null,
+    hasSubscriberCount: Boolean(subscriberCount),
+  });
 }
 
 // Insert-only: never clobber an existing video's richer fields (e.g. a real
@@ -199,6 +214,10 @@ export async function refreshLiveStatus(channelId: string) {
  */
 export async function syncChannel(channelId: string): Promise<{ added: number }> {
   const startedAt = Date.now();
+  await refreshChannelMetadata(channelId, true).catch((e) => {
+    log.warn("channel.metadata_refresh_failed", { channelId, error: e instanceof Error ? e.message : String(e) });
+  });
+
   const [feed, scraped] = await Promise.all([
     fetchChannelFeed(channelId).catch(() => ({ videos: [], channelTitle: "", channelId })),
     fetchChannelVideos(channelId),
@@ -285,9 +304,6 @@ export async function syncChannel(channelId: string): Promise<{ added: number }>
     log.warn("channel.sync.playlists_failed", { channelId, error: e instanceof Error ? e.message : String(e) });
   }
 
-  await refreshChannelMetadata(channelId).catch((e) => {
-    log.warn("channel.metadata_refresh_failed", { channelId, error: e instanceof Error ? e.message : String(e) });
-  });
   db.prepare("UPDATE channels SET last_refreshed_at = datetime('now') WHERE channel_id = ?").run(channelId);
   log.info("channel.sync.complete", { channelId, added, scraped: scraped.length, rss: feed.videos.length, playlists: playlistsScanned, ms: Date.now() - startedAt });
   return { added };
@@ -315,7 +331,7 @@ export async function refreshAvatarsBatch() {
     const { channel_id } = rows[i];
     try {
       const about = await fetchChannelAbout(channel_id);
-      saveAvatar.run(about.avatar || null, about.title || null, about.stats[0] ?? null, channel_id);
+      saveAvatar.run(about.avatar || null, about.title || null, about.subscriberCount || null, channel_id);
       log.info("channel.avatar_refreshed", { channelId: channel_id, title: about.title });
     } catch (e) {
       markChecked.run(channel_id);

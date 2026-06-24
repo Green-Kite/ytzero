@@ -149,6 +149,7 @@ services:
     volumes:
       - ./data:/data
     environment:
+      - IDLE_TIMEOUT_SECONDS=120
       - REFRESH_INTERVAL_MINUTES=5
       - DB_PATH=/data/db/ytzero.db
       - IMG_CACHE_DIR=/data/imgcache
@@ -253,6 +254,7 @@ This can be useful for children when you want YouTube access to be limited to se
 | Variable | Default | Description |
 | --- | --- | --- |
 | `PORT` | `3001` | HTTP server port. |
+| `IDLE_TIMEOUT_SECONDS` | `120` | HTTP idle timeout. Manual channel sync can take longer than Bun's 10-second default when playlist scanning is enabled. |
 | `DB_PATH` | `./data/db/ytzero.db` | SQLite database path. |
 | `IMG_CACHE_DIR` | `./data/imgcache` | Thumbnail and image cache directory. |
 | `IMG_CACHE_TTL_DAYS` | `5` | How long a cached image is fresh before a refetch is attempted. |
@@ -269,6 +271,7 @@ Docker Compose sets:
 ```yaml
 DB_PATH=/data/db/ytzero.db
 IMG_CACHE_DIR=/data/imgcache
+IDLE_TIMEOUT_SECONDS=120
 REFRESH_INTERVAL_MINUTES=5
 ```
 

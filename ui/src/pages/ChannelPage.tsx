@@ -186,9 +186,9 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     try {
       const r = await api.syncChannel(id);
       setSyncMsg(r.added > 0 ? formatAddedVideos(r.added, language) : t("noNewVideos"));
+      loadAbout();
       if (r.added > 0) {
         reload();
-        loadAbout();
       }
     } catch {
       setSyncMsg(t("syncError"));
@@ -224,10 +224,10 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
         {about?.avatar && <img className="channel-avatar" src={img(about.avatar)} alt="" />}
         <div className="channel-info">
           <h1 className="channel-title">{about?.title ?? "…"}</h1>
-          {about && about.stats.length > 0 && (
+          {about && (about.subscriberCount || about.stats.length > 0) && (
             <div className="channel-stats">
-              {about.stats[0] && <span>{about.stats[0]} {t("subscribers")}</span>}
-              {about.stats.slice(1).map((s, i) =>
+              {about.subscriberCount && <span>{about.subscriberCount} {t("subscribers")}</span>}
+              {about.stats.map((s, i) =>
                 s.startsWith("@")
                   ? <span key={i}>{s}</span>
                   : <span key={i}>{s} {language === "pl" ? "filmów" : t("videos")}</span>

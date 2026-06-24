@@ -18,6 +18,7 @@ COPY app/src ./src
 COPY --from=ui-build /ui/dist ./public
 
 ENV PORT=3001 \
+    IDLE_TIMEOUT_SECONDS=120 \
     DB_PATH=/data/db/ytzero.db \
     IMG_CACHE_DIR=/data/imgcache \
     UI_DIST=./public

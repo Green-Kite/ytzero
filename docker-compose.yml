@@ -7,6 +7,7 @@ services:
     volumes:
       - ./data:/data
     environment:
+      - IDLE_TIMEOUT_SECONDS=120
       - REFRESH_INTERVAL_MINUTES=5
       - DB_PATH=/data/db/ytzero.db
       - IMG_CACHE_DIR=/data/imgcache

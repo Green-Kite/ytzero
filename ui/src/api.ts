@@ -77,6 +77,7 @@ export interface ChannelAbout {
   description: string;
   avatar: string;
   banner: string;
+  subscriberCount: string;
   stats: string[];
   links: ChannelLink[];
   joinedDate: string;
