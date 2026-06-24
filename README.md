@@ -1,10 +1,14 @@
 # YouTube Zero
 
-![YouTube Zero Today view](docs/assets/youtube-zero-today.png)
+![YouTube Zero main feed](docs/assets/feed.png)
 
-| Settings: Channels | Settings: Display |
+| Standard player | Theater player |
 | --- | --- |
-| <img src="docs/assets/youtube-zero-settings-channels.png" alt="YouTube Zero Settings channels view" width="360"> | <img src="docs/assets/youtube-zero-settings-display.png" alt="YouTube Zero Settings display view" width="360"> |
+| <img src="docs/assets/video-standard.png" alt="YouTube Zero standard video player" width="360"> | <img src="docs/assets/video-theater.png" alt="YouTube Zero theater video player" width="360"> |
+
+| Tags and rules | Display settings |
+| --- | --- |
+| <img src="docs/assets/tags.png" alt="YouTube Zero tags and rules settings" width="360"> | <img src="docs/assets/display.png" alt="YouTube Zero display settings" width="360"> |
 
 > A self-hosted YouTube subscriptions reader with no Google account, no API key, and no recommendation algorithm.
 
@@ -12,6 +16,7 @@ YouTube Zero is a small web app for watching channels you already care about. It
 
 ## Table of Contents
 
+- [What You Get](#what-you-get)
 - [Why](#why)
 - [Features](#features)
 - [Screens](#screens)
@@ -30,6 +35,22 @@ YouTube Zero is a small web app for watching channels you already care about. It
 - [Trademark Notice](#trademark-notice)
 - [Limitations](#limitations)
 - [License](#license)
+
+## What You Get
+
+After the first start you get a local YouTube subscriptions app at `http://localhost:3001`.
+
+The initial app is intentionally empty: no Google login, no imported account data, and no recommendations. From **Settings -> Channels** you add channels manually or import an OPML / Google Takeout subscriptions file. Once channels are added, YouTube Zero starts filling a local SQLite database with their public RSS videos and background metadata.
+
+The main screen gives you:
+
+- **Today** - the default inbox for unwatched videos from followed channels.
+- **Continue watching** - videos with saved playback progress.
+- **Top channels** - most-watched followed channels, when enabled.
+- **Search** - local feed search, plus YouTube search for opening temporary videos outside your subscriptions.
+- **Sidebar navigation** - Today, Live, Watch later, Liked, History, Rejected, Settings, recent subscriptions, and your local playlists.
+
+Settings are where the app becomes yours: import channels, create tags and automatic rules, build local playlists, configure filters, choose language and player preferences, enable SponsorBlock, rename the app, reorder or hide sidebar items, inspect temporary videos and logs, and optionally lock settings with a 6-digit PIN.
 
 ## Why
 
@@ -59,18 +80,22 @@ And leaves out:
 - **Watch later buckets** - schedule videos for Today, Tonight, Tomorrow, Tomorrow evening, or Weekend.
 - **Archive flow** - reject videos, restore them later, and keep the main feed clean.
 - **Watch history and progress** - record watched videos and resume partially watched videos.
+- **Liked videos** - mark videos as liked and browse them from a dedicated view.
 - **Tags** - tag videos and channels; channel tags are inherited by their videos.
 - **Automatic tag rules** - apply tags by matching title or description text.
 - **Filter rules** - automatically reject matching videos, or keep only matching videos for selected channels.
 - **User playlists** - create local playlists, choose icons, add videos manually, and populate playlists with rules.
 - **Child lock** - protect settings with a 6-digit PIN so channel, filter, tag, playlist, and display configuration cannot be changed without unlocking.
 - **Channel pages** - browse regular videos, Shorts, public playlists, channel metadata, and channel-specific tags.
-- **Theather view** - distraction-light player layout for watching.
+- **Theater view** - distraction-light player layout for watching.
 - **Internationalization** - English and Polish UI, with saved user preference.
 - **Player preferences** - captions, player language, caption language, preferred quality, and Shorts visibility.
+- **Custom display** - rename the app, change grid density, show or hide top channels, and reorder or hide sidebar items.
 - **Shorts tab** - dedicated Shorts view that shows only Shorts from channels you follow. Filterable by tag, just like the main feed. Watched Shorts are marked in the grid so you always know where you left off.
 - **Shorts player** - a full-screen vertical player for browsing Shorts one at a time. Navigate with on-screen arrows, keyboard arrow keys, or swipe. Space pauses and resumes. The next and previous Shorts are preloaded in the background for instant playback. Controls are hidden so the video fills the screen without distraction.
 - **SponsorBlock** - optional integration with [SponsorBlock](https://sponsor.ajay.app) to automatically skip sponsored segments, intros, outros, interaction reminders, and more. Configurable per category.
+- **Temporary videos** - open videos from YouTube search even when they are not from followed channels, then review or clear them later.
+- **Application logs** - inspect recent backend logs from the settings UI.
 - **Image cache** - local thumbnail and image cache for faster repeat loads.
 
 ## Screens
@@ -80,9 +105,11 @@ The app is designed around a few primary workflows:
 - **Today** - the main inbox for fresh videos.
 - **Live** - currently live and upcoming streams.
 - **Scheduled** - videos saved into time-based buckets.
+- **Liked** - videos you marked as liked.
 - **History** - watched videos.
 - **Rejected** - archived videos.
-- **Settings** - channels, tags, rules, playlists, display, language, and player preferences.
+- **Subscriptions** - followed channels with recent activity.
+- **Settings** - channels, tags, rules, playlists, display, external videos, logs, child lock, language, and player preferences.
 
 ## Tech Stack
 
