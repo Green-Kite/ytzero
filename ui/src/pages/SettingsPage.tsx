@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Check, ChevronDown, ChevronUp, Clock, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, LoaderCircle, ListMusic, MonitorPlay, Pencil, Plus, RefreshCw, ShieldCheck, Tags, Trash2, Tv, UserMinus, UserPlus, X, Zap } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Clock, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plus, RefreshCw, ShieldCheck, Tags, Trash2, Tv, UserMinus, UserPlus, X, Zap } from "lucide-react";
 import { api, type AppLogs, type Channel, type ChildLockStatus, type FilterRule, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES } from "../api";
 import { NAV_ITEMS, normalizeNav, parseNavConfig, type NavConfigEntry } from "../nav";
 import { img } from "../img";
@@ -541,6 +541,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [playlistIcon, setPlaylistIcon] = useState("ListMusic");
   const [appName, setAppName] = useState("YT Zero");
   const [appNameInput, setAppNameInput] = useState("YT Zero");
+  const [appIconColor, setAppIconColor] = useState("#f2293a");
   const [showShorts, setShowShorts] = useState(false);
   const [showTopChannels, setShowTopChannels] = useState(true);
   const [navConfig, setNavConfig] = useState<NavConfigEntry[]>(() => parseNavConfig(null));
@@ -652,6 +653,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         const name = r.settings.app_name || "YT Zero";
         setAppName(name);
         setAppNameInput(name);
+        setAppIconColor(r.settings.app_icon_color || "#f2293a");
         setShowShorts(r.settings.show_shorts === "1");
         setShowTopChannels(r.settings.show_top_channels !== "0");
         const raw = r.settings.sidebar_nav;
@@ -717,6 +719,13 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     await api.updateSettings({ app_name: name });
     emit("app-name-changed");
     showToast(t("appNameSaved"));
+  };
+
+  const saveAppIconColor = async (color: string) => {
+    setAppIconColor(color);
+    await api.updateSettings({ app_icon_color: color });
+    emit("app-name-changed");
+    showToast(t("appIconColorSaved"));
   };
 
   const savePlayer = async (patch: Record<string, string>) => {
@@ -1322,6 +1331,22 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                 onKeyDown={(e) => e.key === "Enter" && saveAppName()}
               />
               <button className="btn" onClick={saveAppName} disabled={appNameInput.trim() === appName}>{t("save")}</button>
+            </div>
+          </div>
+
+          <div className="settings-select-row">
+            <label className="switch-label" htmlFor="app-icon-color">{t("appIconColorLabel")}</label>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <span className="logo-mark" style={{ background: appIconColor }}>
+                <Play fill="currentColor" size={16} />
+              </span>
+              <input
+                id="app-icon-color"
+                type="color"
+                value={appIconColor}
+                onChange={(e) => saveAppIconColor(e.target.value)}
+                style={{ width: 40, height: 32, padding: 2, border: "1px solid var(--surface-3)", borderRadius: 6, background: "var(--bg)", cursor: "pointer" }}
+              />
             </div>
           </div>
 

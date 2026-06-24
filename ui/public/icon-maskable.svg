@@ -1,5 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#f2293a"/>
-  <!-- play triangle centered within the 80% safe zone (102–410) -->
-  <polygon points="178,168 358,256 178,344" fill="#fff"/>
-</svg>

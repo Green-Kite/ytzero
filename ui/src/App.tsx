@@ -177,7 +177,7 @@ function SidebarPlaylists() {
   );
 }
 
-function TopBar({ appName }: { appName: string }) {
+function TopBar({ appName, appIconColor }: { appName: string; appIconColor: string }) {
   const { t } = useI18n();
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -210,7 +210,7 @@ function TopBar({ appName }: { appName: string }) {
         <Menu size={20} />
       </button>
       <Link to="/" className="topbar-logo">
-        <span className="logo-mark">
+        <span className="logo-mark" style={{ background: appIconColor }}>
           <Play fill="currentColor" />
         </span>
         <span className="logo-text">{appName}</span>
@@ -238,6 +238,7 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [showShorts, setShowShorts] = useState(false);
   const [appName, setAppName] = useState("YT Zero");
+  const [appIconColor, setAppIconColor] = useState("#f2293a");
   const [navConfig, setNavConfig] = useState<NavConfigEntry[]>(() => parseNavConfig(null));
   const [showHidden, setShowHidden] = useState(false);
 
@@ -257,6 +258,7 @@ export default function App() {
     api.settings().then((r) => {
       setShowShorts(r.settings.show_shorts === "1");
       setAppName(r.settings.app_name || "YT Zero");
+      setAppIconColor(r.settings.app_icon_color || "#f2293a");
       const raw = r.settings.sidebar_nav;
       const navCfg = parseNavConfig(raw);
       if (!raw && r.settings.shorts_tab === "1") {
@@ -271,6 +273,13 @@ export default function App() {
   useEffect(() => subscribe("app-name-changed", loadSettings), [loadSettings]);
   useEffect(() => subscribe("sidebar-nav-changed", loadSettings), [loadSettings]);
   useEffect(() => { document.title = appName; }, [appName]);
+
+  // Re-skin the tab favicon live (the OS-cached PWA icon only refreshes on reinstall).
+  useEffect(() => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="${appIconColor}"/><polygon points="192,160 384,256 192,352" fill="#fff"/></svg>`;
+    const href = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+    document.querySelectorAll<HTMLLinkElement>('link[rel="icon"], link[rel="apple-touch-icon"]').forEach((l) => { l.href = href; });
+  }, [appIconColor]);
 
   useEffect(() => {
     const load = () =>
@@ -298,7 +307,7 @@ export default function App() {
 
   return (
     <div className="layout">
-      <TopBar appName={appName} />
+      <TopBar appName={appName} appIconColor={appIconColor} />
       <div className="layout-body">
         <aside className="sidebar">
           {navItems.map(renderNavLink)}
