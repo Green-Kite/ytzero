@@ -1186,7 +1186,6 @@ button.video-card:disabled { cursor: default; }
 }
 .schedule-action-segment {
   display: flex;
-  overflow: hidden;
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.10);
 }
@@ -1196,6 +1195,15 @@ button.video-card:disabled { cursor: default; }
 .schedule-action-segment .action-btn {
   border-radius: 0;
   background: transparent;
+}
+.schedule-action-segment .tooltip-wrap:first-child .action-btn {
+  border-radius: 7px 0 0 7px;
+}
+.schedule-action-segment .tooltip-wrap:last-child .action-btn {
+  border-radius: 0 7px 7px 0;
+}
+.schedule-action-segment .tooltip-wrap:only-child .action-btn {
+  border-radius: 7px;
 }
 .schedule-action-group--single .action-btn {
   width: 61px;

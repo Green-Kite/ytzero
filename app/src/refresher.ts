@@ -24,6 +24,27 @@ const videoExists = db.prepare("SELECT 1 FROM videos WHERE video_id = ?");
 const MAX_SYNC_PLAYLISTS = 25;
 const PLAYLIST_SYNC_DELAY_MS = 800;
 
+async function refreshChannelMetadata(channelId: string) {
+  const about = await fetchChannelAbout(channelId);
+  db.prepare(
+    `UPDATE channels SET
+       about_json = ?,
+       about_fetched_at = datetime('now'),
+       thumbnail = COALESCE(?, thumbnail),
+       title = COALESCE(?, title),
+       subscriber_count = COALESCE(?, subscriber_count),
+       avatar_checked_at = datetime('now')
+     WHERE channel_id = ?`
+  ).run(
+    JSON.stringify(about),
+    about.avatar || null,
+    about.title || null,
+    about.stats[0] ?? null,
+    channelId
+  );
+  log.info("channel.metadata_refreshed", { channelId, title: about.title, handle: about.handle });
+}
+
 // Insert-only: never clobber an existing video's richer fields (e.g. a real
 // upload's description) with the sparse data a playlist feed carries.
 const insertPlaylistVideo = db.prepare(`
@@ -112,6 +133,9 @@ export async function refreshChannel(channelId: string): Promise<{ added: number
       "UPDATE channels SET title = ?, last_refreshed_at = datetime('now') WHERE channel_id = ? AND title = ''"
     ).run(feed.channelTitle, channelId);
   }
+  await refreshChannelMetadata(channelId).catch((e) => {
+    log.warn("channel.metadata_refresh_failed", { channelId, error: e instanceof Error ? e.message : String(e) });
+  });
   db.prepare("UPDATE channels SET last_refreshed_at = datetime('now') WHERE channel_id = ?").run(channelId);
   if (added > 0) log.info("channel.refresh.added", { channelId, title: feed.channelTitle, added, ms: Date.now() - startedAt });
   return { added };
@@ -261,6 +285,9 @@ export async function syncChannel(channelId: string): Promise<{ added: number }>
     log.warn("channel.sync.playlists_failed", { channelId, error: e instanceof Error ? e.message : String(e) });
   }
 
+  await refreshChannelMetadata(channelId).catch((e) => {
+    log.warn("channel.metadata_refresh_failed", { channelId, error: e instanceof Error ? e.message : String(e) });
+  });
   db.prepare("UPDATE channels SET last_refreshed_at = datetime('now') WHERE channel_id = ?").run(channelId);
   log.info("channel.sync.complete", { channelId, added, scraped: scraped.length, rss: feed.videos.length, playlists: playlistsScanned, ms: Date.now() - startedAt });
   return { added };

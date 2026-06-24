@@ -495,28 +495,21 @@ export interface VideoInfo {
 const videoInfoCache = new Map<string, { at: number; data: VideoInfo }>();
 const VIDEO_INFO_TTL = 10 * 60_000;
 
-export async function fetchVideoInfo(videoId: string): Promise<VideoInfo> {
-  const cached = videoInfoCache.get(videoId);
-  if (cached && Date.now() - cached.at < VIDEO_INFO_TTL) return cached.data;
+async function fetchVideoInfoFromInnerTube(videoId: string): Promise<VideoInfo> {
+  const data = await _yt.player({ videoId });
+  const vd = data?.videoDetails;
+  if (!vd?.videoId) throw new Error("innertube videoDetails missing");
 
-  const url = `https://www.youtube.com/watch?v=${videoId}`;
-  const res = await fetch(url, { headers: FETCH_HEADERS });
-  if (!res.ok) throw new Error(`YouTube fetch failed (${res.status})`);
-  const html = await res.text();
-  const pr = extractVariable(html, "ytInitialPlayerResponse");
-  const vd = pr?.videoDetails;
-  if (!vd?.videoId) throw new Error("videoDetails missing");
-
-  const mf = pr?.microformat?.playerMicroformatRenderer;
+  const mf = data?.microformat?.playerMicroformatRenderer;
   const lengthSec = parseInt(vd.lengthSeconds ?? "", 10);
   const duration = Number.isFinite(lengthSec) && lengthSec > 0
     ? `${Math.floor(lengthSec / 60)}:${String(lengthSec % 60).padStart(2, "0")}`
     : null;
 
-  const result: VideoInfo = {
+  return {
     videoId: vd.videoId,
     title: vd.title ?? "",
-    channelId: vd.channelId ?? "",
+    channelId: vd.channelId ?? mf?.externalChannelId ?? "",
     channelTitle: vd.author ?? mf?.ownerChannelName ?? "",
     description: vd.shortDescription ?? "",
     thumbnail: vd.thumbnail?.thumbnails?.at(-1)?.url
@@ -525,6 +518,49 @@ export async function fetchVideoInfo(videoId: string): Promise<VideoInfo> {
     publishedAt: mf?.publishDate ?? null,
     duration,
   };
+}
+
+export async function fetchVideoInfo(videoId: string): Promise<VideoInfo> {
+  const cached = videoInfoCache.get(videoId);
+  if (cached && Date.now() - cached.at < VIDEO_INFO_TTL) return cached.data;
+
+  let result: VideoInfo;
+  try {
+    const url = `https://www.youtube.com/watch?v=${videoId}`;
+    const res = await fetch(url, { headers: FETCH_HEADERS });
+    if (!res.ok) throw new Error(`YouTube fetch failed (${res.status})`);
+    const html = await res.text();
+    const pr = extractVariable(html, "ytInitialPlayerResponse");
+    const vd = pr?.videoDetails;
+    if (!vd?.videoId) throw new Error("videoDetails missing");
+
+    const mf = pr?.microformat?.playerMicroformatRenderer;
+    const lengthSec = parseInt(vd.lengthSeconds ?? "", 10);
+    const duration = Number.isFinite(lengthSec) && lengthSec > 0
+      ? `${Math.floor(lengthSec / 60)}:${String(lengthSec % 60).padStart(2, "0")}`
+      : null;
+
+    result = {
+      videoId: vd.videoId,
+      title: vd.title ?? "",
+      channelId: vd.channelId ?? "",
+      channelTitle: vd.author ?? mf?.ownerChannelName ?? "",
+      description: vd.shortDescription ?? "",
+      thumbnail: vd.thumbnail?.thumbnails?.at(-1)?.url
+        ?? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+      viewCount: parseInt(vd.viewCount ?? "", 10) || null,
+      publishedAt: mf?.publishDate ?? null,
+      duration,
+    };
+  } catch (htmlError) {
+    try {
+      result = await fetchVideoInfoFromInnerTube(videoId);
+    } catch (innerTubeError) {
+      const primary = htmlError instanceof Error ? htmlError.message : String(htmlError);
+      const fallback = innerTubeError instanceof Error ? innerTubeError.message : String(innerTubeError);
+      throw new Error(`video info failed: html=${primary}; innertube=${fallback}`);
+    }
+  }
   videoInfoCache.set(videoId, { at: Date.now(), data: result });
   return result;
 }
