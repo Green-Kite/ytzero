@@ -68,7 +68,10 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     setFollowed(true);
     window.scrollTo(0, 0);
     api.channelAbout(id).then((about) => { setAbout(about); emit("channels-changed"); }).catch(console.error);
-    api.channel(id).then((r) => setChannelTags(r.channel.tags)).catch(console.error);
+    api.channel(id).then((r) => {
+      setChannelTags(r.channel.tags);
+      setFollowed(r.channel.followed !== 0);
+    }).catch(console.error);
     api
       .feed({ channel: id, status: "all", shorts: true, page: 0 })
       .then((r) => { setVideos(r.videos); setHasMore(r.videos.length === CHANNEL_PAGE_SIZE); })
@@ -202,6 +205,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
       const next = !followed;
       await api.followChannel(id, next);
       setFollowed(next);
+      emit("channels-changed");
     } finally {
       setUnfollowPending(false);
     }

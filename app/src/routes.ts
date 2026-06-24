@@ -817,7 +817,8 @@ api.get("/channels/:id/playlists", async (c) => {
 
 api.put("/channels/:id/follow", async (c) => {
   const { followed } = await c.req.json<{ followed: boolean }>();
-  db.prepare("UPDATE channels SET followed = ? WHERE channel_id = ?").run(followed ? 1 : 0, c.req.param("id"));
+  db.prepare("UPDATE channels SET followed = ?, external = CASE WHEN ? = 1 THEN 0 ELSE external END WHERE channel_id = ?")
+    .run(followed ? 1 : 0, followed ? 1 : 0, c.req.param("id"));
   return c.json({ ok: true });
 });
 

@@ -633,6 +633,18 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     }
   };
 
+  const followExternalChannel = async (channelId: string) => {
+    setExternalVideos((vs) => vs.filter((v) => v.channel_id !== channelId));
+    try {
+      await api.followChannel(channelId, true);
+      emit("channels-changed");
+      load();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : String(e));
+      loadExternal();
+    }
+  };
+
   useEffect(() => {
     load().catch(console.error);
     Promise.all([api.settings(), api.childLock()])
@@ -1509,9 +1521,17 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                       )}
                       <span className="external-ch-name">{ch.channel_title}</span>
                       <button
+                        className="btn primary"
+                        onClick={() => followExternalChannel(ch.channel_id)}
+                        style={{ marginLeft: "auto", flexShrink: 0 }}
+                      >
+                        <UserPlus size={14} />
+                        {t("follow")}
+                      </button>
+                      <button
                         className="btn danger"
                         onClick={() => removeExternalChannel(ch.channel_id)}
-                        style={{ marginLeft: "auto", flexShrink: 0 }}
+                        style={{ flexShrink: 0 }}
                       >
                         <Trash2 size={14} />
                         {t("externalClearChannel")}
