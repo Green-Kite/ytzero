@@ -1,18 +1,18 @@
-# YouTube Zero
+# YT Zero
 
-![YouTube Zero main feed](docs/assets/feed.png)
+![YT Zero main feed](docs/assets/feed.png)
 
 | Standard player | Theater player |
 | --- | --- |
-| <img src="docs/assets/video-standard.png" alt="YouTube Zero standard video player" width="360"> | <img src="docs/assets/video-theater.png" alt="YouTube Zero theater video player" width="360"> |
+| <img src="docs/assets/video-standard.png" alt="YT Zero standard video player" width="360"> | <img src="docs/assets/video-theater.png" alt="YT Zero theater video player" width="360"> |
 
 | Tags and rules | Display settings |
 | --- | --- |
-| <img src="docs/assets/tags.png" alt="YouTube Zero tags and rules settings" width="360"> | <img src="docs/assets/display.png" alt="YouTube Zero display settings" width="360"> |
+| <img src="docs/assets/tags.png" alt="YT Zero tags and rules settings" width="360"> | <img src="docs/assets/display.png" alt="YT Zero display settings" width="360"> |
 
 > A self-hosted YouTube subscriptions reader with no Google account, no API key, and no recommendation algorithm.
 
-YouTube Zero is a small web app for watching channels you already care about. It reads public YouTube RSS feeds, stores videos locally in SQLite, and gives you a quiet inbox for filtering, scheduling, watching, archiving, and organizing videos.
+YT Zero is a small web app for watching channels you already care about. It reads public YouTube RSS feeds, stores videos locally in SQLite, and gives you a quiet inbox for filtering, scheduling, watching, archiving, and organizing videos.
 
 It keeps the parts that matter — your subscriptions, your own watch queue, your tags and playlists, an embedded player, local history and progress — and leaves out Google sign-in, API keys, recommendations, Shorts-first navigation, and algorithmic home feeds.
 
@@ -86,7 +86,7 @@ Full documentation lives in the **[Wiki](https://github.com/Pelski/ytzero/wiki)*
 
 ## Privacy & license
 
-YouTube Zero does not require a Google account or a YouTube Data API key, and stores app data locally in SQLite. It still connects to YouTube to fetch RSS feeds, metadata, thumbnails, pages, and embedded videos.
+YT Zero does not require a Google account or a YouTube Data API key, and stores app data locally in SQLite. It still connects to YouTube to fetch RSS feeds, metadata, thumbnails, pages, and embedded videos.
 
 YouTube is a trademark of Google LLC. This project is not affiliated with, endorsed by, or associated with YouTube or Google LLC.
 

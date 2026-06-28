@@ -1,5 +1,3 @@
-# Child Lock
-
 You can enable **Child lock** in **Settings → Child** and set a 6-digit PIN. When it is enabled, settings changes are locked until the PIN is entered.
 
 This is useful for children when you want YouTube access limited to selected channels only. You still manage the setup yourself: add only the channels you want available, keep filters and followed channels configured correctly, and make sure the app is the YouTube surface the child actually uses.

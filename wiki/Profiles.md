@@ -1,6 +1,4 @@
-# Profiles
-
-YouTube Zero supports multiple **profiles** — separate, isolated views of the app for different people on the same install. Channels and videos are stored once and shared, but each profile keeps its own state.
+YT Zero supports multiple **profiles** — separate, isolated views of the app for different people on the same install. Channels and videos are stored once and shared, but each profile keeps its own state.
 
 ## What is per-profile
 

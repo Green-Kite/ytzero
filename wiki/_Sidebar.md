@@ -1,4 +1,4 @@
-### [YouTube Zero](Home)
+### [YT Zero](Home)
 
 **Getting started**
 - [Installation](Installation)

@@ -1,5 +1,3 @@
-# Development
-
 ## Tech stack
 
 | Layer | Stack |

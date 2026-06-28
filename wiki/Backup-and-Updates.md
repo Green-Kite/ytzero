@@ -1,5 +1,3 @@
-# Backup & Updates
-
 All persistent Docker data lives in `./data`.
 
 ## Backup

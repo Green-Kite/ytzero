@@ -1,6 +1,4 @@
-# Configuration
-
-YouTube Zero is configured through environment variables. All of them are optional and have sensible defaults.
+YT Zero is configured through environment variables. All of them are optional and have sensible defaults.
 
 ## Environment variables
 

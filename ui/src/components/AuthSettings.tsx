@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { startRegistration } from "@simplewebauthn/browser";
-import { Check, KeyRound, Trash2 } from "lucide-react";
+import { Check, KeyRound, TriangleAlert, Trash2 } from "lucide-react";
 import { api, type AuthConfig, type AuthConfigUpdate, type AuthMethod } from "../api";
 import { useI18n, type I18nKey } from "../i18n";
 import Popconfirm from "./Popconfirm";
@@ -30,7 +30,10 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
   const [mapDraft, setMapDraft] = useState<Record<number, string>>({}); // oidc_subject or proxy_match
   const [userDraft, setUserDraft] = useState<Record<number, string>>({});
   const [test, setTest] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [countdown, setCountdown] = useState(0);
 
+  // Initial load: seed every editable draft from the saved config. Runs once.
   const load = useCallback(() => {
     api
       .authConfig()
@@ -51,6 +54,21 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
       .catch(() => setForbidden(true));
   }, []);
   useEffect(load, [load]);
+
+  // Refresh only the status indicators (password_set, passkeys, …) after a save —
+  // without resetting the selected method, the active subtab, or the user's drafts.
+  const refreshCfg = useCallback(() => {
+    api.authConfig().then(setCfg).catch(() => {});
+  }, []);
+
+  // While the activation modal is open, gate the confirm button behind a 5s
+  // countdown so the change can't be applied without reading the warning.
+  useEffect(() => {
+    if (!confirming) return;
+    setCountdown(5);
+    const id = setInterval(() => setCountdown((n) => (n <= 1 ? 0 : n - 1)), 1000);
+    return () => clearInterval(id);
+  }, [confirming]);
 
   if (forbidden) return <p className="page-hint">{t("primaryOnlyHint")}</p>;
   if (!cfg || !oidc) return null;
@@ -77,20 +95,26 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
     })),
   });
 
+  // Save only persists; it must not change the selected method, the tab, or any
+  // other in-progress draft (only the just-saved secret inputs are cleared).
   const save = async () => {
-    await api.saveAuthConfig(buildUpdate());
-    setSharedPw("");
-    setOidcSecret("");
-    setPwDraft({});
-    showToast(t("authSaved"));
-    load();
+    try {
+      await api.saveAuthConfig(buildUpdate());
+      setSharedPw("");
+      setOidcSecret("");
+      setPwDraft({});
+      showToast(t("authSaved"));
+      refreshCfg();
+    } catch (e: any) {
+      showToast(e?.message ?? t("loginError"));
+    }
   };
 
   const runTest = async () => {
     await api.saveAuthConfig(buildUpdate());
     const r = await api.testOidc();
     setTest({ ok: r.ok, msg: r.ok ? `${t("authTestOk")} — ${r.authorization_endpoint ?? ""}` : `${t("authTestFailed")}: ${r.error ?? ""}` });
-    load();
+    refreshCfg();
   };
 
   const addSharedPasskey = async () => {
@@ -99,19 +123,20 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
       const resp = await startRegistration({ optionsJSON: options });
       await api.passkeyRegisterVerify(flowId, resp);
       showToast(t("authSaved"));
-      load();
+      refreshCfg();
     } catch {
       showToast(t("loginError"));
     }
   };
 
-  const activate = async () => {
+  const doActivate = async () => {
     try {
       await api.saveAuthConfig(buildUpdate());
       await api.setAuthMethod(selected);
       // The session model changes — reload so the auth gate re-evaluates.
       window.location.replace("/");
     } catch (e: any) {
+      setConfirming(false);
       showToast(e?.message ?? t("loginError"));
     }
   };
@@ -239,12 +264,32 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
       {selected !== "none" && (
         <div className="form-row auth-actions">
           <button className="btn" onClick={save}>{t("authSave")}</button>
-          <button className="btn primary" onClick={activate}>{t("authActivate")}</button>
+          <button className="btn primary" onClick={() => setConfirming(true)}>{t("authActivate")}</button>
         </div>
       )}
       {selected === "none" && cfg.method !== "none" && (
         <div className="form-row auth-actions">
-          <button className="btn primary" onClick={activate}>{t("authActivate")}</button>
+          <button className="btn primary" onClick={() => setConfirming(true)}>{t("authActivate")}</button>
+        </div>
+      )}
+
+      {confirming && (
+        <div className="auth-confirm-backdrop" onClick={() => setConfirming(false)}>
+          <div className="auth-confirm-card" onClick={(e) => e.stopPropagation()}>
+            <div className="auth-confirm-icon"><TriangleAlert size={34} strokeWidth={2.25} /></div>
+            <h3 className="auth-confirm-title">{t("authActivateConfirmTitle")}</h3>
+            <p className="auth-confirm-msg">{t("authActivateConfirmMsg")}</p>
+            <div className="auth-confirm-note">
+              <div className="auth-confirm-note-label">{t("authActivateConfirmRecovery")}</div>
+              <code className="auth-confirm-code">YTZERO_AUTH_DISABLE=1</code>
+            </div>
+            <div className="auth-confirm-actions">
+              <button className="btn" onClick={() => setConfirming(false)}>{t("close")}</button>
+              <button className="btn primary" disabled={countdown > 0} onClick={doActivate}>
+                {countdown > 0 ? `${t("authActivate")} (${countdown})` : t("authActivate")}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </section>

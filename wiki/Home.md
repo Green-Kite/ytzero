@@ -1,10 +1,8 @@
-# YouTube Zero Wiki
-
 A self-hosted YouTube subscriptions reader with no Google account, no API key, and no recommendation algorithm.
 
-YouTube Zero reads public YouTube RSS feeds, stores videos locally in SQLite, and gives you a quiet inbox for filtering, scheduling, watching, archiving, and organizing videos from the channels you already care about.
+YT Zero reads public YouTube RSS feeds, stores videos locally in SQLite, and gives you a quiet inbox for filtering, scheduling, watching, archiving, and organizing videos from the channels you already care about.
 
-![YouTube Zero main feed](https://raw.githubusercontent.com/Pelski/ytzero/main/docs/assets/feed.png)
+![YT Zero main feed](https://raw.githubusercontent.com/Pelski/ytzero/main/docs/assets/feed.png)
 
 ## Start here
 

@@ -1,5 +1,3 @@
-# Importing Subscriptions
-
 You add channels in **Settings → Channels**.
 
 ## Supported inputs
@@ -15,8 +13,8 @@ You add channels in **Settings → Channels**.
 2. Select only **YouTube and YouTube Music**.
 3. Include subscriptions.
 4. Download the archive.
-5. Import `subscriptions.csv` in YouTube Zero settings.
+5. Import `subscriptions.csv` in YT Zero settings.
 
 ## After importing
 
-Once channels are added, YouTube Zero begins filling the local database from their public RSS feeds and refreshing metadata in the background. See [How It Works](How-It-Works) for what gets fetched and stored.
+Once channels are added, YT Zero begins filling the local database from their public RSS feeds and refreshing metadata in the background. See [How It Works](How-It-Works) for what gets fetched and stored.

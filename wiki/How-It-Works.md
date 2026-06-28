@@ -1,6 +1,4 @@
-# How It Works
-
-YouTube Zero uses only public YouTube surfaces — no Google account and no YouTube Data API key.
+YT Zero uses only public YouTube surfaces — no Google account and no YouTube Data API key.
 
 ## What is fetched
 

@@ -1,8 +1,6 @@
-# Privacy & License
-
 ## Privacy
 
-YouTube Zero does not require a Google account or a YouTube Data API key. It stores app data locally in SQLite. The app still connects to YouTube to fetch RSS feeds, metadata, thumbnails, pages, and embedded videos.
+YT Zero does not require a Google account or a YouTube Data API key. It stores app data locally in SQLite. The app still connects to YouTube to fetch RSS feeds, metadata, thumbnails, pages, and embedded videos.
 
 ## Limitations
 
@@ -17,7 +15,7 @@ YouTube is a trademark of Google LLC. This project is not affiliated with, endor
 
 ## Acknowledgements
 
-- **[SponsorBlock](https://sponsor.ajay.app)** — community-driven database of skippable segments in YouTube videos (sponsors, intros, outros, and more). YouTube Zero optionally queries the SponsorBlock API to automatically skip segments while watching. SponsorBlock is an open-source project by [Ajay Ramachandran](https://github.com/ajayyy) — thank you to everyone who contributes segments to the database. Ajay is doing an amazing job and the project is well worth supporting — you can do so at [sponsor.ajay.app/donate](https://sponsor.ajay.app/donate).
+- **[SponsorBlock](https://sponsor.ajay.app)** — community-driven database of skippable segments in YouTube videos (sponsors, intros, outros, and more). YT Zero optionally queries the SponsorBlock API to automatically skip segments while watching. SponsorBlock is an open-source project by [Ajay Ramachandran](https://github.com/ajayyy) — thank you to everyone who contributes segments to the database. Ajay is doing an amazing job and the project is well worth supporting — you can do so at [sponsor.ajay.app/donate](https://sponsor.ajay.app/donate).
 
 ## License
 

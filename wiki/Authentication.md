@@ -1,6 +1,4 @@
-# Authentication
-
-By default YouTube Zero uses **no authentication** — it assumes a trusted local network, and [profiles](Profiles) are just named views. If you expose the app beyond your LAN, or want each member of the household to sign in, the **primary profile** can switch the login method under **Settings → Authentication**.
+By default YT Zero uses **no authentication** — it assumes a trusted local network, and [profiles](Profiles) are just named views. If you expose the app beyond your LAN, or want each member of the household to sign in, the **primary profile** can switch the login method under **Settings → Authentication**.
 
 > The **Authentication** tab is only visible to the primary profile (the first profile created). See [Profiles](Profiles) for what "primary" means.
 
@@ -85,7 +83,7 @@ Set an optional **Logout URL** to send users to your provider's logout endpoint 
 
 ## Proxy header
 
-A trusted reverse proxy (e.g. **Authelia** with forward-auth) authenticates the user and passes their username in a request header. YouTube Zero matches that value to a profile.
+A trusted reverse proxy (e.g. **Authelia** with forward-auth) authenticates the user and passes their username in a request header. YT Zero matches that value to a profile.
 
 1. Select **Proxy header**.
 2. Set the **header name** your proxy sends (e.g. `Remote-User`, `X-authentik-username`). The name is configurable — nothing is hard-coded.

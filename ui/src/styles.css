@@ -3471,3 +3471,45 @@ a.playlist-item { text-decoration: none; }
 .login-btn { width: 100%; justify-content: center; height: 40px; }
 .login-error { color: #ff6b76; font-size: 13px; text-align: center; }
 .login-proxy-error { display: flex; gap: 10px; align-items: flex-start; color: var(--text-2); font-size: 13px; line-height: 1.5; }
+
+/* ---------- auth activation confirm modal ---------- */
+.auth-confirm-backdrop {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+  animation: auth-confirm-fade 0.12s ease-out;
+}
+@keyframes auth-confirm-fade { from { opacity: 0; } to { opacity: 1; } }
+.auth-confirm-card {
+  width: 100%; max-width: 420px;
+  background: var(--surface); border: 1px solid var(--surface-3);
+  border-radius: 16px; padding: 28px 26px 22px;
+  display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+}
+.auth-confirm-icon {
+  width: 64px; height: 64px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--live);
+  background: rgba(242, 41, 58, 0.14);
+  border: 1px solid rgba(242, 41, 58, 0.35);
+}
+.auth-confirm-title { margin: 0; font-size: 18px; font-weight: 600; }
+.auth-confirm-msg { margin: 0; color: var(--text-2); font-size: 13.5px; line-height: 1.55; }
+.auth-confirm-note {
+  width: 100%; text-align: left;
+  background: var(--surface-2); border: 1px solid var(--surface-3);
+  border-radius: 10px; padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.auth-confirm-note-label { color: var(--text-2); font-size: 12.5px; line-height: 1.5; }
+.auth-confirm-code {
+  display: block; width: 100%; box-sizing: border-box; text-align: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
+  background: var(--bg); border: 1px solid var(--surface-3); border-radius: 6px;
+  padding: 5px 9px; color: var(--text);
+  user-select: all;
+}
+.auth-confirm-actions { display: flex; justify-content: center; gap: 10px; margin-top: 4px; width: 100%; }
+.auth-confirm-actions .btn { min-width: 110px; justify-content: center; }
+.auth-confirm-actions .btn[disabled] { opacity: 0.55; cursor: not-allowed; }

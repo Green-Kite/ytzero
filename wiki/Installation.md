@@ -1,6 +1,4 @@
-# Installation
-
-Run YouTube Zero with Docker (recommended) or locally with Bun.
+Run YT Zero with Docker (recommended) or locally with Bun.
 
 ## Requirements
 
@@ -94,4 +92,4 @@ This builds `ui/dist` if needed and starts the backend serving the built fronten
 
 After the first start you get a local YouTube subscriptions app at <http://localhost:3001>.
 
-The initial app is intentionally empty: no Google login, no imported account data, and no recommendations. From **Settings → Channels** you add channels manually or import an OPML / Google Takeout subscriptions file (see [Importing Subscriptions](Importing-Subscriptions)). Once channels are added, YouTube Zero starts filling a local SQLite database with their public RSS videos and background metadata.
+The initial app is intentionally empty: no Google login, no imported account data, and no recommendations. From **Settings → Channels** you add channels manually or import an OPML / Google Takeout subscriptions file (see [Importing Subscriptions](Importing-Subscriptions)). Once channels are added, YT Zero starts filling a local SQLite database with their public RSS videos and background metadata.
