@@ -67,7 +67,15 @@ function parseCookies(header: string | undefined) {
   for (const part of (header ?? "").split(";")) {
     const [rawKey, ...rawValue] = part.trim().split("=");
     if (!rawKey) continue;
-    cookies[rawKey] = decodeURIComponent(rawValue.join("="));
+    const raw = rawValue.join("=");
+    // A single malformed cookie (e.g. a %-containing value set by another app on
+    // the same domain) must not crash every request — decodeURIComponent throws
+    // a URIError on bad escapes, so fall back to the raw value.
+    try {
+      cookies[rawKey] = decodeURIComponent(raw);
+    } catch {
+      cookies[rawKey] = raw;
+    }
   }
   return cookies;
 }
