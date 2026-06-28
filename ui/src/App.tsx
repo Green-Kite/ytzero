@@ -2,7 +2,8 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { subscribe, emit } from "./events";
 import { Link, NavLink, Route, Routes, useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronDown, ChevronRight, Menu, Play, Plus, Search, Users } from "lucide-react";
-import { api, type UserPlaylist, type Video } from "./api";
+import { api, type AuthStatus, type UserPlaylist, type Video } from "./api";
+import LoginPage from "./pages/LoginPage";
 import { splitNavItems, parseNavConfig, type NavConfigEntry } from "./nav";
 import { img } from "./img";
 import FeedPage from "./pages/FeedPage";
@@ -234,6 +235,18 @@ function TopBar({ appName, appIconColor }: { appName: string; appIconColor: stri
 const SIDEBAR_KEY = "sidebar_open";
 
 export default function App() {
+  const [auth, setAuth] = useState<AuthStatus | null>(null);
+
+  useEffect(() => {
+    api.authStatus().then(setAuth).catch(() => setAuth({ method: "none", authenticated: true, can_switch: true }));
+  }, []);
+
+  if (!auth) return null; // brief: deciding app vs. login
+  if (!auth.authenticated) return <LoginPage status={auth} />;
+  return <AppShell />;
+}
+
+function AppShell() {
   const { t } = useI18n();
   const navigate = useNavigate();
   const [liveCount, setLiveCount] = useState(0);

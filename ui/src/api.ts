@@ -199,6 +199,45 @@ export interface Profile {
   has_pin: boolean;
   active: boolean;
   is_primary: boolean;
+  can_switch: boolean;
+}
+
+export type AuthMethod = "none" | "shared" | "per_profile" | "oidc" | "proxy_header";
+
+export interface AuthStatus {
+  method: AuthMethod;
+  authenticated: boolean;
+  can_switch: boolean;
+  scope?: "account" | "profile" | null;
+  oidc_mode?: "mapped" | "gateway";
+  proxy_header_seen?: boolean;
+  username_field?: boolean;
+  login?: { password: boolean; passkey: boolean; oidc: boolean };
+}
+
+export interface AuthConfig {
+  method: AuthMethod;
+  shared: { username: string; password_set: boolean; passkeys: { id: number; label: string | null; created_at: string }[] };
+  oidc: {
+    issuer: string;
+    client_id: string;
+    client_secret_set: boolean;
+    scopes: string;
+    mode: "mapped" | "gateway";
+    claim: string;
+    autocreate: boolean;
+    logout_url: string;
+    redirect_uri: string;
+  };
+  proxy: { header: string; logout_url: string; current_header_value: string };
+  profiles: { id: number; name: string; username: string; has_password: boolean; has_passkey: boolean; oidc_subject: string; proxy_match: string }[];
+}
+
+export interface AuthConfigUpdate {
+  shared?: { username?: string; password?: string };
+  oidc?: Partial<AuthConfig["oidc"]> & { client_secret?: string };
+  proxy?: { header?: string; logout_url?: string };
+  profiles?: { id: number; username?: string; password?: string; oidc_subject?: string; proxy_match?: string }[];
 }
 
 export interface AppLogs {
@@ -393,6 +432,24 @@ export const api = {
   resetProfilePin: (id: number) => http<{ profile: Profile }>(`/profiles/${id}/reset-pin`, { method: "POST" }),
 
   config: () => http<{ app_url: string }>("/config"),
+
+  // ---------- authentication ----------
+  authStatus: () => http<AuthStatus>("/auth/status"),
+  passwordLogin: (username: string, password: string) =>
+    http<{ ok: true; active_id?: number }>("/auth/password/login", { method: "POST", body: JSON.stringify({ username, password }) }),
+  passkeyLoginOptions: () => http<{ options: any; flowId: string }>("/auth/passkey/login/options", { method: "POST", body: "{}" }),
+  passkeyLoginVerify: (flowId: string, response: any) =>
+    http<{ ok: true; active_id?: number }>("/auth/passkey/login/verify", { method: "POST", body: JSON.stringify({ flowId, response }) }),
+  passkeyRegisterOptions: (target: "shared" | "self") =>
+    http<{ options: any; flowId: string }>("/auth/passkey/register/options", { method: "POST", body: JSON.stringify({ target }) }),
+  passkeyRegisterVerify: (flowId: string, response: any, label?: string) =>
+    http<{ ok: true }>("/auth/passkey/register/verify", { method: "POST", body: JSON.stringify({ flowId, response, label }) }),
+  deletePasskey: (id: number) => http<{ ok: true }>(`/auth/passkey/${id}`, { method: "DELETE" }),
+  logout: () => http<{ ok: true; logout_url: string }>("/auth/logout", { method: "POST", body: "{}" }),
+  authConfig: () => http<AuthConfig>("/auth/config"),
+  saveAuthConfig: (body: AuthConfigUpdate) => http<{ ok: true }>("/auth/config", { method: "PUT", body: JSON.stringify(body) }),
+  testOidc: () => http<{ ok: boolean; authorization_endpoint?: string; token_endpoint?: string; error?: string }>("/auth/test-oidc", { method: "POST", body: "{}" }),
+  setAuthMethod: (method: AuthMethod) => http<{ ok: true }>("/auth/method", { method: "POST", body: JSON.stringify({ method }) }),
 
   sponsorblock: async (videoId: string, categories: string[]): Promise<SponsorSegment[]> => {
     const qs = new URLSearchParams({ videoID: videoId, categories: JSON.stringify(categories) });

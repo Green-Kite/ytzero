@@ -23,6 +23,31 @@ import { applyRuleToAllVideos } from "./autotags";
 import { applyPlaylistRuleToAllVideos, applyPlaylistRulesForPlaylist } from "./userPlaylists";
 import { applyFilterRuleToAll } from "./filterRules";
 import { log, readRecentLogs } from "./logger";
+import {
+  authMethod,
+  hashPassword,
+  verifyPassword,
+  requestOrigin,
+  AUTH_SESSION_COOKIE,
+  createSession,
+  validateSession,
+  destroySession,
+  authSessionCookie,
+  clearAuthSessionCookie,
+  passkeyRegisterOptions,
+  passkeyRegisterVerify,
+  passkeyLoginOptions,
+  passkeyLoginVerify,
+  listPasskeys,
+  deletePasskey,
+  hasPasskeys,
+  oidcAuthUrl,
+  oidcCallback,
+  testOidc,
+  invalidateOidcConfig,
+  resolveProxyUser,
+  proxyHeaderValue,
+} from "./auth";
 
 export const api = new Hono<{ Variables: { userId: number } }>();
 
@@ -131,14 +156,65 @@ function currentUserId(c: any): number {
   return c.get("userId");
 }
 
-// Resolve the active profile from the cookie for every API request.
-api.use("*", async (c, next) => {
+// Falls back to the cookie-selected profile (or the first profile). Used by the
+// 'none' method and by any session whose scope allows free profile switching.
+function profileFromCookie(c: any): number {
   const raw = Number(parseCookies(c.req.header("cookie"))[PROFILE_COOKIE]);
   const valid = Number.isInteger(raw) && raw > 0 && userExists.get(raw);
-  const uid = valid ? raw : (firstUserId.get() as { id: number } | null)?.id ?? 0;
-  c.set("userId", uid);
-  await next();
+  return valid ? raw : (firstUserId.get() as { id: number } | null)?.id ?? 0;
+}
+
+// Endpoints reachable without an authenticated session (login flow + app config).
+function isAuthFreePath(path: string): boolean {
+  return path.startsWith("/auth") || path === "/config";
+}
+
+// Resolve the active profile for every API request, honouring the auth method.
+api.use("*", async (c, next) => {
+  const method = authMethod();
+  const path = new URL(c.req.url).pathname.replace(/^\/api/, "");
+
+  if (method === "none") {
+    c.set("userId", profileFromCookie(c));
+    return next();
+  }
+
+  if (method === "proxy_header") {
+    const uid = resolveProxyUser(c);
+    if (uid) {
+      c.set("userId", uid);
+      return next();
+    }
+    c.set("userId", 0);
+    if (isAuthFreePath(path)) return next();
+    return c.json({ error: "unauthenticated", method }, 401);
+  }
+
+  // shared | per_profile | oidc → server-side session
+  const session = validateSession(parseCookies(c.req.header("cookie"))[AUTH_SESSION_COOKIE]);
+  if (session) {
+    c.set("userId", session.scope === "account" ? profileFromCookie(c) : session.user_id ?? 0);
+    return next();
+  }
+  c.set("userId", 0);
+  if (isAuthFreePath(path)) return next();
+  return c.json({ error: "unauthenticated", method }, 401);
 });
+
+/** True when the active auth method permits internal profile switching. */
+function canSwitchProfiles(): boolean {
+  const method = authMethod();
+  if (method === "none" || method === "shared") return true;
+  if (method === "oidc") return (getSetting("auth_oidc_mode") || "mapped") === "gateway";
+  return false;
+}
+
+function methodLogoutUrl(): string {
+  const method = authMethod();
+  if (method === "oidc") return getSetting("auth_oidc_logout_url") || "";
+  if (method === "proxy_header") return getSetting("auth_proxy_logout_url") || "";
+  return "";
+}
 
 async function hashPin(pin: string) {
   return Bun.password.hash(pin);
@@ -1471,17 +1547,24 @@ interface UserRow {
   avatar_color: string;
   pin_hash: string | null;
   sort_order: number;
+  username: string | null;
+  password_hash: string | null;
+  oidc_subject: string | null;
+  proxy_match: string | null;
 }
 
 function serializeProfile(u: UserRow, activeId: number) {
+  const method = authMethod();
   return {
     id: u.id,
     name: u.name,
     avatar: u.avatar ? `/api/profiles/${u.id}/avatar?v=${encodeURIComponent(u.avatar)}` : "",
     avatar_color: u.avatar_color,
-    has_pin: Boolean(u.pin_hash),
+    // PINs only apply to the 'none' method; any other auth method replaces them.
+    has_pin: method === "none" ? Boolean(u.pin_hash) : false,
     active: u.id === activeId,
     is_primary: u.id === primaryUserId(),
+    can_switch: canSwitchProfiles(),
   };
 }
 
@@ -1611,10 +1694,16 @@ api.get("/profiles/:id/avatar", (c) => {
 });
 
 api.post("/profiles/switch", async (c) => {
+  // Methods that pin a session to one profile can't switch internally — the UI
+  // must log out (and possibly redirect to the IdP/proxy logout).
+  if (!canSwitchProfiles()) {
+    return c.json({ requires_relogin: true, logout_url: methodLogoutUrl() });
+  }
   const { id, pin } = await c.req.json().catch(() => ({}));
   const user = db.prepare("SELECT * FROM users WHERE id = ?").get(Number(id)) as UserRow | null;
   if (!user) return c.json({ error: "not found" }, 404);
-  if (user.pin_hash) {
+  // PINs only gate switching under the 'none' method; other methods replace them.
+  if (authMethod() === "none" && user.pin_hash) {
     if (!isSixDigitPin(pin) || !(await Bun.password.verify(pin, user.pin_hash))) {
       return c.json({ error: "invalid PIN" }, 401);
     }
@@ -1622,6 +1711,277 @@ api.post("/profiles/switch", async (c) => {
   c.header("Set-Cookie", profileCookie(user.id));
   log.info("profile.switched", { id: user.id });
   return c.json({ ok: true, active_id: user.id });
+});
+
+// ---------- authentication ----------
+
+const OIDC_FLOW_COOKIE = "ytzero_oidc_flow";
+
+// What the SPA needs to decide between rendering the app or the login screen.
+api.get("/auth/status", (c) => {
+  const method = authMethod();
+  if (method === "none") return c.json({ method, authenticated: true, can_switch: true });
+
+  if (method === "proxy_header") {
+    const uid = resolveProxyUser(c);
+    return c.json({
+      method,
+      authenticated: Boolean(uid),
+      can_switch: false,
+      proxy_header_seen: Boolean(proxyHeaderValue(c)),
+    });
+  }
+
+  const session = validateSession(parseCookies(c.req.header("cookie"))[AUTH_SESSION_COOKIE]);
+  const perProfilePasskeys =
+    (db.prepare("SELECT COUNT(*) AS n FROM webauthn_credentials WHERE user_id IS NOT NULL").get() as { n: number }).n > 0;
+  return c.json({
+    method,
+    authenticated: Boolean(session),
+    scope: session?.scope ?? null,
+    can_switch: canSwitchProfiles(),
+    oidc_mode: method === "oidc" ? getSetting("auth_oidc_mode") || "mapped" : undefined,
+    // per_profile always needs a username; shared only when one was configured.
+    username_field: method === "per_profile" || (method === "shared" && Boolean(getSetting("auth_shared_username"))),
+    login: {
+      password:
+        method === "shared" ? Boolean(getSetting("auth_shared_password_hash")) : method === "per_profile",
+      passkey: method === "shared" ? hasPasskeys(null) : method === "per_profile" ? perProfilePasskeys : false,
+      oidc: method === "oidc",
+    },
+  });
+});
+
+api.post("/auth/password/login", async (c) => {
+  const method = authMethod();
+  const { username, password } = await c.req.json().catch(() => ({}));
+  if (method === "shared") {
+    const expectedUser = getSetting("auth_shared_username") || "";
+    if (expectedUser && String(username ?? "") !== expectedUser) return c.json({ error: "invalid credentials" }, 401);
+    if (!(await verifyPassword(String(password ?? ""), getSetting("auth_shared_password_hash") || ""))) {
+      return c.json({ error: "invalid credentials" }, 401);
+    }
+    c.header("Set-Cookie", authSessionCookie(createSession(null, "account")));
+    log.info("auth.login", { method, scope: "account" });
+    return c.json({ ok: true });
+  }
+  if (method === "per_profile") {
+    const row = db.prepare("SELECT * FROM users WHERE username = ?").get(String(username ?? "")) as UserRow | null;
+    if (!row?.password_hash || !(await verifyPassword(String(password ?? ""), row.password_hash))) {
+      return c.json({ error: "invalid credentials" }, 401);
+    }
+    c.header("Set-Cookie", authSessionCookie(createSession(row.id, "profile")));
+    c.header("Set-Cookie", profileCookie(row.id), { append: true });
+    log.info("auth.login", { method, scope: "profile", id: row.id });
+    return c.json({ ok: true, active_id: row.id });
+  }
+  return c.json({ error: "password login not enabled" }, 400);
+});
+
+api.post("/auth/passkey/login/options", async (c) => {
+  const method = authMethod();
+  if (method !== "shared" && method !== "per_profile") return c.json({ error: "not enabled" }, 400);
+  const { options, flowId } = await passkeyLoginOptions(c, null);
+  return c.json({ options, flowId });
+});
+
+api.post("/auth/passkey/login/verify", async (c) => {
+  const { flowId, response } = await c.req.json().catch(() => ({}));
+  const { user_id } = await passkeyLoginVerify(c, flowId, response);
+  const scope = user_id === null ? "account" : "profile";
+  c.header("Set-Cookie", authSessionCookie(createSession(user_id, scope)));
+  if (user_id !== null) c.header("Set-Cookie", profileCookie(user_id), { append: true });
+  log.info("auth.login", { method: authMethod(), scope, id: user_id });
+  return c.json({ ok: true, active_id: user_id ?? undefined });
+});
+
+// Register a passkey. target='shared' (primary only) or 'self' (current profile).
+api.post("/auth/passkey/register/options", async (c) => {
+  const { target } = await c.req.json().catch(() => ({}));
+  if (target === "shared") {
+    if (!isPrimaryUser(c)) return c.json({ error: "primary only" }, 403);
+    const { options, flowId } = await passkeyRegisterOptions(c, null, getSetting("auth_shared_username") || "shared");
+    return c.json({ options, flowId });
+  }
+  const uid = currentUserId(c);
+  if (!uid) return c.json({ error: "unauthenticated" }, 401);
+  const user = db.prepare("SELECT name FROM users WHERE id = ?").get(uid) as { name: string };
+  const { options, flowId } = await passkeyRegisterOptions(c, uid, user.name);
+  return c.json({ options, flowId });
+});
+
+api.post("/auth/passkey/register/verify", async (c) => {
+  const { flowId, response, label } = await c.req.json().catch(() => ({}));
+  await passkeyRegisterVerify(c, flowId, response, label);
+  return c.json({ ok: true });
+});
+
+api.delete("/auth/passkey/:id", (c) => {
+  const id = Number(c.req.param("id"));
+  // Shared credentials (user_id NULL) are primary-managed; others belong to the owner.
+  const cred = db.prepare("SELECT user_id FROM webauthn_credentials WHERE id = ?").get(id) as { user_id: number | null } | null;
+  if (!cred) return c.json({ error: "not found" }, 404);
+  if (cred.user_id === null) {
+    if (!isPrimaryUser(c)) return c.json({ error: "primary only" }, 403);
+  } else if (cred.user_id !== currentUserId(c)) {
+    return c.json({ error: "not allowed" }, 403);
+  }
+  deletePasskey(id, cred.user_id);
+  return c.json({ ok: true });
+});
+
+api.get("/auth/oidc/login", async (c) => {
+  try {
+    const { url, flowId } = await oidcAuthUrl(c);
+    c.header(
+      "Set-Cookie",
+      `${OIDC_FLOW_COOKIE}=${encodeURIComponent(flowId)}; Path=/; Max-Age=600; SameSite=Lax; HttpOnly`
+    );
+    return c.redirect(url);
+  } catch (e: any) {
+    log.error("auth.oidc.login_failed", { error: e?.message });
+    return c.redirect("/?auth_error=oidc");
+  }
+});
+
+api.get("/auth/oidc/callback", async (c) => {
+  try {
+    const flowId = parseCookies(c.req.header("cookie"))[OIDC_FLOW_COOKIE];
+    const { user_id, mode } = await oidcCallback(c, flowId, c.req.url);
+    const scope = mode === "gateway" ? "account" : "profile";
+    c.header("Set-Cookie", authSessionCookie(createSession(scope === "account" ? null : user_id, scope)));
+    if (user_id !== null) c.header("Set-Cookie", profileCookie(user_id), { append: true });
+    c.header("Set-Cookie", `${OIDC_FLOW_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax; HttpOnly`, { append: true });
+    log.info("auth.login", { method: "oidc", scope, id: user_id });
+    return c.redirect("/");
+  } catch (e: any) {
+    log.error("auth.oidc.callback_failed", { error: e?.message });
+    return c.redirect("/?auth_error=oidc");
+  }
+});
+
+api.post("/auth/logout", (c) => {
+  destroySession(parseCookies(c.req.header("cookie"))[AUTH_SESSION_COOKIE]);
+  c.header("Set-Cookie", clearAuthSessionCookie());
+  return c.json({ ok: true, logout_url: methodLogoutUrl() });
+});
+
+// ---------- auth configuration (primary profile only) ----------
+
+api.get("/auth/config", (c) => {
+  if (!isPrimaryUser(c)) return c.json({ error: "primary only" }, 403);
+  const profiles = (db.prepare("SELECT * FROM users ORDER BY sort_order ASC, id ASC").all() as UserRow[]).map((u) => ({
+    id: u.id,
+    name: u.name,
+    username: u.username ?? "",
+    has_password: Boolean(u.password_hash),
+    has_passkey: hasPasskeys(u.id),
+    oidc_subject: u.oidc_subject ?? "",
+    proxy_match: u.proxy_match ?? "",
+  }));
+  return c.json({
+    method: getSetting("auth_method") || "none",
+    shared: {
+      username: getSetting("auth_shared_username") || "",
+      password_set: Boolean(getSetting("auth_shared_password_hash")),
+      passkeys: listPasskeys(null),
+    },
+    oidc: {
+      issuer: getSetting("auth_oidc_issuer") || "",
+      client_id: getSetting("auth_oidc_client_id") || "",
+      client_secret_set: Boolean(getSetting("auth_oidc_client_secret")),
+      scopes: getSetting("auth_oidc_scopes") || "openid profile email",
+      mode: getSetting("auth_oidc_mode") || "mapped",
+      claim: getSetting("auth_oidc_claim") || "preferred_username",
+      autocreate: getSetting("auth_oidc_autocreate") === "1",
+      logout_url: getSetting("auth_oidc_logout_url") || "",
+      redirect_uri: `${requestOrigin(c)}/api/auth/oidc/callback`,
+    },
+    proxy: {
+      header: getSetting("auth_proxy_header") || "Remote-User",
+      logout_url: getSetting("auth_proxy_logout_url") || "",
+      current_header_value: proxyHeaderValue(c) ?? "",
+    },
+    profiles,
+  });
+});
+
+api.put("/auth/config", async (c) => {
+  if (!isPrimaryUser(c)) return c.json({ error: "primary only" }, 403);
+  const body = await c.req.json().catch(() => ({}));
+
+  if (body.shared) {
+    if (body.shared.username !== undefined) setSetting("auth_shared_username", String(body.shared.username));
+    if (body.shared.password) setSetting("auth_shared_password_hash", await hashPassword(String(body.shared.password)));
+    else if (body.shared.password === "") setSetting("auth_shared_password_hash", "");
+  }
+
+  if (body.oidc) {
+    const o = body.oidc;
+    if (o.issuer !== undefined) setSetting("auth_oidc_issuer", String(o.issuer).trim());
+    if (o.client_id !== undefined) setSetting("auth_oidc_client_id", String(o.client_id).trim());
+    if (o.client_secret) setSetting("auth_oidc_client_secret", String(o.client_secret)); // keep existing if not provided
+    if (o.scopes !== undefined) setSetting("auth_oidc_scopes", String(o.scopes));
+    if (o.mode !== undefined) setSetting("auth_oidc_mode", o.mode === "gateway" ? "gateway" : "mapped");
+    if (o.claim !== undefined) setSetting("auth_oidc_claim", String(o.claim));
+    if (o.autocreate !== undefined) setSetting("auth_oidc_autocreate", o.autocreate ? "1" : "0");
+    if (o.logout_url !== undefined) setSetting("auth_oidc_logout_url", String(o.logout_url).trim());
+    invalidateOidcConfig();
+  }
+
+  if (body.proxy) {
+    if (body.proxy.header !== undefined) setSetting("auth_proxy_header", String(body.proxy.header).trim() || "Remote-User");
+    if (body.proxy.logout_url !== undefined) setSetting("auth_proxy_logout_url", String(body.proxy.logout_url).trim());
+  }
+
+  if (Array.isArray(body.profiles)) {
+    for (const p of body.profiles) {
+      const id = Number(p.id);
+      if (!db.prepare("SELECT 1 FROM users WHERE id = ?").get(id)) continue;
+      if (p.username !== undefined) db.prepare("UPDATE users SET username = ? WHERE id = ?").run(String(p.username).trim() || null, id);
+      if (p.password) db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(await hashPassword(String(p.password)), id);
+      else if (p.password === "") db.prepare("UPDATE users SET password_hash = NULL WHERE id = ?").run(id);
+      if (p.oidc_subject !== undefined) db.prepare("UPDATE users SET oidc_subject = ? WHERE id = ?").run(String(p.oidc_subject).trim() || null, id);
+      if (p.proxy_match !== undefined) db.prepare("UPDATE users SET proxy_match = ? WHERE id = ?").run(String(p.proxy_match).trim() || null, id);
+    }
+  }
+
+  return c.json({ ok: true });
+});
+
+api.post("/auth/test-oidc", async (c) => {
+  if (!isPrimaryUser(c)) return c.json({ error: "primary only" }, 403);
+  return c.json(await testOidc());
+});
+
+// Activate an auth method after validating its prerequisites (anti-lockout).
+api.post("/auth/method", async (c) => {
+  if (!isPrimaryUser(c)) return c.json({ error: "primary only" }, 403);
+  const { method } = await c.req.json().catch(() => ({}));
+  const valid = ["none", "shared", "per_profile", "oidc", "proxy_header"];
+  if (!valid.includes(method)) return c.json({ error: "invalid method" }, 400);
+
+  if (method === "shared" && !getSetting("auth_shared_password_hash") && !hasPasskeys(null)) {
+    return c.json({ error: "set a shared password or passkey first" }, 400);
+  }
+  if (method === "per_profile") {
+    const primary = db.prepare("SELECT * FROM users ORDER BY id ASC LIMIT 1").get() as UserRow;
+    if (!primary.password_hash && !hasPasskeys(primary.id)) {
+      return c.json({ error: "give the primary profile a password or passkey first" }, 400);
+    }
+  }
+  if (method === "oidc") {
+    const probe = await testOidc();
+    if (!probe.ok) return c.json({ error: `OIDC not reachable: ${probe.error}` }, 400);
+  }
+  if (method === "proxy_header") {
+    const mapped = (db.prepare("SELECT COUNT(*) AS n FROM users WHERE proxy_match IS NOT NULL AND proxy_match != ''").get() as { n: number }).n;
+    if (mapped === 0) return c.json({ error: "map at least one profile to a header value first" }, 400);
+  }
+
+  setSetting("auth_method", method);
+  log.info("auth.method_changed", { method });
+  return c.json({ ok: true });
 });
 
 // ---------- config ----------

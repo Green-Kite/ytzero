@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import { Check, Lock, Settings, UserPlus, X } from "lucide-react";
-import { api, type Profile } from "../api";
+import { Check, Lock, LogOut, Settings, UserPlus, X } from "lucide-react";
+import { api, type AuthStatus, type Profile } from "../api";
 import { subscribe } from "../events";
 import { useI18n } from "../i18n";
 
@@ -27,10 +27,13 @@ export default function ProfileMenu() {
   const [pinFor, setPinFor] = useState<Profile | null>(null);
   const [pin, setPin] = useState("");
   const [pinError, setPinError] = useState(false);
+  const [auth, setAuth] = useState<AuthStatus | null>(null);
+  const [reloginFor, setReloginFor] = useState<Profile | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(() => {
     api.profiles().then((r) => setProfiles(r.profiles)).catch(() => {});
+    api.authStatus().then(setAuth).catch(() => {});
   }, []);
   useEffect(load, [load]);
   useEffect(() => subscribe("profiles-changed", load), [load]);
@@ -65,12 +68,29 @@ export default function ProfileMenu() {
 
   const onPick = (p: Profile) => {
     if (p.active) { setOpen(false); return; }
+    // Methods that pin a session to one profile can't switch internally — the
+    // user must sign out (and possibly be redirected to the IdP/proxy logout).
+    if (!p.can_switch) {
+      setOpen(false);
+      setReloginFor(p);
+      return;
+    }
     if (p.has_pin) {
       setPinFor(p);
       setPin("");
       setPinError(false);
     } else {
       doSwitch(p);
+    }
+  };
+
+  const doLogout = async () => {
+    try {
+      const { logout_url } = await api.logout();
+      if (logout_url) window.location.href = logout_url;
+      else window.location.replace("/");
+    } catch {
+      window.location.replace("/");
     }
   };
 
@@ -117,7 +137,30 @@ export default function ProfileMenu() {
             <Settings size={18} />
             <span>{t("manageProfiles")}</span>
           </button>
+          {auth && auth.method !== "none" && (
+            <button className="profile-action" role="menuitem" onClick={doLogout}>
+              <LogOut size={18} />
+              <span>{t("logout")}</span>
+            </button>
+          )}
         </div>
+      )}
+
+      {reloginFor && createPortal(
+        <div className="profile-pin-backdrop" onClick={() => setReloginFor(null)}>
+          <div className="profile-pin-modal" onClick={(e) => e.stopPropagation()}>
+            <button type="button" className="profile-pin-close" aria-label={t("close")} onClick={() => setReloginFor(null)}>
+              <X size={18} />
+            </button>
+            <ProfileAvatar profile={reloginFor} size={56} />
+            <div className="profile-pin-title">{t("switchNeedsLogoutTitle")}</div>
+            <div className="profile-pin-hint">{t("switchNeedsLogout")}</div>
+            <button type="button" className="btn primary" onClick={doLogout}>
+              <LogOut size={16} /> {t("logout")}
+            </button>
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* Rendered into <body> so the fixed overlay escapes the topbar's

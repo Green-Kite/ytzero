@@ -1,0 +1,107 @@
+import { FormEvent, useState } from "react";
+import { startAuthentication } from "@simplewebauthn/browser";
+import { KeyRound, LogIn, Play, ShieldAlert } from "lucide-react";
+import { api, type AuthStatus } from "../api";
+import { useI18n } from "../i18n";
+
+/**
+ * Full-screen sign-in shown when `auth/status` reports the request is not
+ * authenticated. The rendered controls depend on the active method's `login`
+ * capabilities (password / passkey / oidc) or, for proxy_header, an error hint.
+ */
+export default function LoginPage({ status }: { status: AuthStatus }) {
+  const { t } = useI18n();
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const login = status.login ?? { password: false, passkey: false, oidc: false };
+  const showUsername = Boolean(status.username_field);
+
+  const done = () => window.location.replace("/");
+
+  const submitPassword = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.passwordLogin(username, password);
+      done();
+    } catch {
+      setError(t("loginInvalid"));
+      setBusy(false);
+    }
+  };
+
+  const loginPasskey = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const { options, flowId } = await api.passkeyLoginOptions();
+      const response = await startAuthentication({ optionsJSON: options });
+      await api.passkeyLoginVerify(flowId, response);
+      done();
+    } catch {
+      setError(t("loginError"));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="login-page">
+      <div className="login-card">
+        <span className="logo-mark login-logo">
+          <Play fill="currentColor" />
+        </span>
+        <h1 className="login-title">{t("loginTitle")}</h1>
+
+        {status.method === "proxy_header" && (
+          <div className="login-proxy-error">
+            <ShieldAlert size={20} />
+            <p>{t("loginProxyMissing")}</p>
+          </div>
+        )}
+
+        {login.password && (
+          <form className="login-form" onSubmit={submitPassword}>
+            {showUsername && (
+              <input
+                className="login-input"
+                placeholder={t("authUsername")}
+                value={username}
+                autoFocus
+                onChange={(e) => setUsername(e.target.value)}
+              />
+            )}
+            <input
+              className="login-input"
+              type="password"
+              placeholder={t("authPassword")}
+              value={password}
+              autoFocus={!showUsername}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <button className="btn primary login-btn" type="submit" disabled={busy || !password}>
+              <LogIn size={18} /> {t("loginSignIn")}
+            </button>
+          </form>
+        )}
+
+        {login.passkey && (
+          <button className="btn login-btn" onClick={loginPasskey} disabled={busy}>
+            <KeyRound size={18} /> {t("loginWithPasskey")}
+          </button>
+        )}
+
+        {login.oidc && (
+          <a className="btn primary login-btn" href="/api/auth/oidc/login">
+            <LogIn size={18} /> {t("loginWithSso")}
+          </a>
+        )}
+
+        {error && <div className="login-error">{error}</div>}
+      </div>
+    </div>
+  );
+}

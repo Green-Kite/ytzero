@@ -9,9 +9,11 @@
     "start": "bun src/index.ts"
   },
   "dependencies": {
+    "@simplewebauthn/server": "^13.3.2",
     "fast-xml-parser": "^5.7.0",
     "hono": "^4.6.0",
-    "innertube.js": "^1.1.5"
+    "innertube.js": "^1.1.5",
+    "openid-client": "^6.8.4"
   },
   "devDependencies": {
     "@types/bun": "^1.1.10"

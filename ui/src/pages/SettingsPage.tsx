@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Camera, Check, ChevronDown, ChevronUp, Clock, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plus, RefreshCw, ShieldCheck, Tags, Trash2, Tv, UserMinus, UserPlus, Users, X, Zap } from "lucide-react";
+import { Camera, Check, ChevronDown, ChevronUp, Clock, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, KeyRound, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plus, RefreshCw, ShieldCheck, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
 import { api, type AppLogs, type Channel, type ChildLockStatus, type FilterRule, type Profile, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES } from "../api";
 import { ProfileAvatar } from "../components/ProfileMenu";
+import AuthSettings from "../components/AuthSettings";
 import { NAV_ITEMS, normalizeNav, parseNavConfig, type NavConfigEntry } from "../nav";
 import { img } from "../img";
 import TagChip from "../components/TagChip";
@@ -13,17 +14,17 @@ import Popconfirm from "../components/Popconfirm";
 import { emit } from "../events";
 import { formatVideoCount, LANGUAGES, languageName, useI18n, type I18nKey, type Language } from "../i18n";
 
-type Tab = "channels" | "tags" | "playlists" | "display" | "external" | "logs" | "child" | "profiles";
+type Tab = "channels" | "tags" | "playlists" | "display" | "advanced" | "profiles" | "auth";
 
-const TABS: { id: Tab; labelKey: I18nKey; icon: React.ReactNode }[] = [
-  { id: "profiles", labelKey: "profiles", icon: <Users size={15} /> },
+// `primaryOnly` tabs are hidden entirely from non-primary profiles.
+const TABS: { id: Tab; labelKey: I18nKey; icon: React.ReactNode; primaryOnly?: boolean }[] = [
   { id: "channels", labelKey: "channels", icon: <Tv size={15} /> },
   { id: "tags", labelKey: "tagsRules", icon: <Tags size={15} /> },
   { id: "playlists", labelKey: "playlists", icon: <ListMusic size={15} /> },
   { id: "display", labelKey: "display", icon: <MonitorPlay size={15} /> },
-  { id: "external", labelKey: "navExternal", icon: <Clock size={15} /> },
-  { id: "logs", labelKey: "logs", icon: <FileText size={15} /> },
-  { id: "child", labelKey: "child", icon: <ShieldCheck size={15} /> },
+  { id: "advanced", labelKey: "advanced", icon: <Wrench size={15} /> },
+  { id: "profiles", labelKey: "profiles", icon: <Users size={15} /> },
+  { id: "auth", labelKey: "authTab", icon: <KeyRound size={15} />, primaryOnly: true },
 ];
 
 type LogLevel = "INFO" | "WARN" | "ERROR";
@@ -782,6 +783,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const setTab = (t: Tab) => setSearchParams({ tab: t }, { replace: true });
   const [channelSubTab, setChannelSubTab] = useState<"list" | "filters">("list");
   const [tagSubTab, setTagSubTab] = useState<"list" | "rules">("list");
+  const [advancedSubTab, setAdvancedSubTab] = useState<"external" | "logs">("external");
   const [channels, setChannels] = useState<Channel[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [rules, setRules] = useState<Rule[]>([]);
@@ -872,9 +874,9 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   }, []);
 
   useEffect(() => {
-    if (tab === "external") loadExternal();
-    if (tab === "logs") loadLogs();
-  }, [tab, loadExternal, loadLogs]);
+    if (tab === "advanced" && advancedSubTab === "external") loadExternal();
+    if (tab === "advanced" && advancedSubTab === "logs") loadLogs();
+  }, [tab, advancedSubTab, loadExternal, loadLogs]);
 
   const clearExternal = async () => {
     setClearingExternal(true);
@@ -1186,7 +1188,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
       <h1 className="page-title">{t("settingsTitle")}</h1>
 
       <div className="settings-tabs">
-        {TABS.map((tabItem) => (
+        {TABS.filter((tabItem) => !tabItem.primaryOnly || isPrimary).map((tabItem) => (
           <button
             key={tabItem.id}
             className={`settings-tab${tab === tabItem.id ? " active" : ""}`}
@@ -1228,7 +1230,88 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         </section>
       )}
 
-      {!isSettingsLocked && tab === "profiles" && <ProfilesSettings showToast={showToast} />}
+      {!isSettingsLocked && tab === "profiles" && (
+        <>
+          <ProfilesSettings showToast={showToast} />
+
+          <section className="settings-section child-lock-panel">
+            <div className="child-lock-header">
+              <ShieldCheck />
+              <div>
+                <div className="switch-label">{t("childLock")}</div>
+                <div className="child-lock-description">{t("childLockHint")}</div>
+              </div>
+            </div>
+
+            {!isPrimary ? (
+              <p className="page-hint">{t("primaryOnlyHint")}</p>
+            ) : !childLock.enabled ? (
+              <>
+                <p className="hint">{t("childLockEnableHint")}</p>
+                <div className="form-row">
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={6}
+                    placeholder={t("newPinPlaceholder")}
+                    value={enablePin}
+                    onChange={(e) => setEnablePin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  />
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={6}
+                    placeholder={t("confirmPinPlaceholder")}
+                    value={enablePinConfirm}
+                    onChange={(e) => setEnablePinConfirm(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    onKeyDown={(e) => e.key === "Enter" && enableChildLock()}
+                  />
+                  <button className="btn primary" onClick={enableChildLock} disabled={enablePin.length !== 6 || enablePinConfirm.length !== 6}>
+                    <ShieldCheck /> {t("enableChildLock")}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="child-lock-status">
+                  <span className="tag-pill">{t("childLockEnabledStatus")}</span>
+                  <button className="btn" onClick={lockSettings}>{t("lockNow")}</button>
+                  <button className="btn danger" onClick={disableChildLock}>{t("disableChildLock")}</button>
+                </div>
+                <p className="hint">{t("changePinHint")}</p>
+                <div className="form-row">
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={6}
+                    placeholder={t("newPinPlaceholder")}
+                    value={newPin}
+                    onChange={(e) => setNewPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  />
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={6}
+                    placeholder={t("confirmPinPlaceholder")}
+                    value={newPinConfirm}
+                    onChange={(e) => setNewPinConfirm(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    onKeyDown={(e) => e.key === "Enter" && changeChildPin()}
+                  />
+                  <button className="btn primary" onClick={changeChildPin} disabled={newPin.length !== 6 || newPinConfirm.length !== 6}>
+                    {t("changePin")}
+                  </button>
+                </div>
+              </>
+            )}
+          </section>
+        </>
+      )}
+
+      {!isSettingsLocked && tab === "auth" && isPrimary && <AuthSettings showToast={showToast} />}
 
       {!isSettingsLocked && tab === "channels" && (
         <section className="settings-section">
@@ -1785,10 +1868,21 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         </section>
       )}
 
-      {!isSettingsLocked && tab === "external" && (
+      {!isSettingsLocked && tab === "advanced" && (
         <section className="settings-section">
-          <div className="page-head" style={{ marginBottom: 16 }}>
-            <p className="page-hint" style={{ margin: 0 }}>{t("externalHint")}</p>
+          <div className="settings-subtabs">
+            <button className={`settings-subtab${advancedSubTab === "external" ? " active" : ""}`} onClick={() => setAdvancedSubTab("external")}>
+              {t("navExternal")}{externalVideos.length > 0 && <span className="settings-tab-count">{externalVideos.length}</span>}
+            </button>
+            <button className={`settings-subtab${advancedSubTab === "logs" ? " active" : ""}`} onClick={() => setAdvancedSubTab("logs")}>
+              {t("logs")}
+            </button>
+          </div>
+
+          {advancedSubTab === "external" && (
+            <>
+              <div className="page-head" style={{ marginBottom: 16 }}>
+                <p className="page-hint" style={{ margin: 0 }}>{t("externalHint")}</p>
             {externalVideos.length > 0 && (
               <button className="btn danger" onClick={clearExternal} disabled={clearingExternal}>
                 {clearingExternal ? <LoaderCircle size={15} className="spin" /> : <Trash2 size={15} />}
@@ -1872,18 +1966,13 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
               </div>
             );
           })()}
-        </section>
-      )}
+            </>
+          )}
 
-      {!isSettingsLocked && tab === "logs" && (
-        <section className="settings-section">
-          <div className="page-head" style={{ marginBottom: 16 }}>
-            <div>
-              <h1 className="page-title" style={{ margin: 0 }}>{t("logs")}</h1>
-              <p className="page-hint" style={{ margin: "6px 0 0" }}>
-                {t("logsHint")}
-              </p>
-            </div>
+          {advancedSubTab === "logs" && (
+            <>
+              <div className="page-head" style={{ marginBottom: 16 }}>
+                <p className="page-hint" style={{ margin: 0 }}>{t("logsHint")}</p>
             <button className="btn" onClick={loadLogs} disabled={loadingLogs}>
               {loadingLogs ? <LoaderCircle size={15} className="spin" /> : <RefreshCw size={15} />}
               {t("refresh")}
@@ -1908,81 +1997,6 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
               </div>
             </>
           )}
-        </section>
-      )}
-
-      {!isSettingsLocked && tab === "child" && (
-        <section className="settings-section child-lock-panel">
-          <div className="child-lock-header">
-            <ShieldCheck />
-            <div>
-              <div className="switch-label">{t("childLock")}</div>
-              <div className="child-lock-description">{t("childLockHint")}</div>
-            </div>
-          </div>
-
-          {!isPrimary ? (
-            <p className="page-hint">{t("primaryOnlyHint")}</p>
-          ) : !childLock.enabled ? (
-            <>
-              <p className="hint">{t("childLockEnableHint")}</p>
-              <div className="form-row">
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  maxLength={6}
-                  placeholder={t("newPinPlaceholder")}
-                  value={enablePin}
-                  onChange={(e) => setEnablePin(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                />
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  maxLength={6}
-                  placeholder={t("confirmPinPlaceholder")}
-                  value={enablePinConfirm}
-                  onChange={(e) => setEnablePinConfirm(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                  onKeyDown={(e) => e.key === "Enter" && enableChildLock()}
-                />
-                <button className="btn primary" onClick={enableChildLock} disabled={enablePin.length !== 6 || enablePinConfirm.length !== 6}>
-                  <ShieldCheck /> {t("enableChildLock")}
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="child-lock-status">
-                <span className="tag-pill">{t("childLockEnabledStatus")}</span>
-                <button className="btn" onClick={lockSettings}>{t("lockNow")}</button>
-                <button className="btn danger" onClick={disableChildLock}>{t("disableChildLock")}</button>
-              </div>
-              <p className="hint">{t("changePinHint")}</p>
-              <div className="form-row">
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  maxLength={6}
-                  placeholder={t("newPinPlaceholder")}
-                  value={newPin}
-                  onChange={(e) => setNewPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                />
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  maxLength={6}
-                  placeholder={t("confirmPinPlaceholder")}
-                  value={newPinConfirm}
-                  onChange={(e) => setNewPinConfirm(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                  onKeyDown={(e) => e.key === "Enter" && changeChildPin()}
-                />
-                <button className="btn primary" onClick={changeChildPin} disabled={newPin.length !== 6 || newPinConfirm.length !== 6}>
-                  {t("changePin")}
-                </button>
-              </div>
             </>
           )}
         </section>

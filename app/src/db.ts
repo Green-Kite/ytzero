@@ -161,7 +161,45 @@ CREATE TABLE IF NOT EXISTS user_settings (
   value   TEXT NOT NULL,
   PRIMARY KEY (user_id, key)
 );
+
+-- ---------- Authentication ----------
+-- WebAuthn / passkey credentials. user_id NULL = the shared-account credential
+-- (auth_method = 'shared'); a real user_id = a per-profile passkey.
+CREATE TABLE IF NOT EXISTS webauthn_credentials (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id       INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  credential_id TEXT NOT NULL UNIQUE,
+  public_key    BLOB NOT NULL,
+  counter       INTEGER NOT NULL DEFAULT 0,
+  transports    TEXT,
+  label         TEXT,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_webauthn_user ON webauthn_credentials(user_id);
+
+-- Server-side auth sessions (survive restart, unlike the in-memory child lock).
+-- scope = 'account' (may pick any profile, e.g. shared / oidc-gateway) or
+-- 'profile' (pinned to user_id, e.g. per_profile / oidc-mapped).
+CREATE TABLE IF NOT EXISTS auth_sessions (
+  token      TEXT PRIMARY KEY,
+  user_id    INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  scope      TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  expires_at TEXT NOT NULL,
+  last_seen  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires ON auth_sessions(expires_at);
 `);
+
+// Per-profile login identity (used by auth_method = per_profile / oidc / proxy_header).
+for (const stmt of [
+  "ALTER TABLE users ADD COLUMN username TEXT",
+  "ALTER TABLE users ADD COLUMN password_hash TEXT",
+  "ALTER TABLE users ADD COLUMN oidc_subject TEXT",
+  "ALTER TABLE users ADD COLUMN proxy_match TEXT",
+]) {
+  try { db.exec(stmt); } catch {}
+}
 
 // Per-user ownership columns on previously global state tables.
 for (const stmt of [
@@ -222,6 +260,23 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   sidebar_nav: "",
   sponsorblock_enabled: "0",
   sponsorblock_categories: '["sponsor"]',
+  // ---------- authentication (all app-wide, owned by the primary profile) ----------
+  // none | shared | per_profile | oidc | proxy_header
+  auth_method: "none",
+  auth_shared_username: "",
+  auth_shared_password_hash: "",
+  auth_oidc_issuer: "",
+  auth_oidc_client_id: "",
+  auth_oidc_client_secret: "",
+  auth_oidc_scopes: "openid profile email",
+  // mapped (identity -> one profile, no switching) | gateway (SSO -> profile picker)
+  auth_oidc_mode: "mapped",
+  auth_oidc_claim: "preferred_username",
+  auth_oidc_autocreate: "0",
+  auth_oidc_logout_url: "",
+  // Configurable forward-auth header name (e.g. Remote-User, X-Authentik-Username).
+  auth_proxy_header: "Remote-User",
+  auth_proxy_logout_url: "",
 };
 
 // App-wide settings that are NOT per profile. Everything else in
@@ -231,6 +286,19 @@ export const GLOBAL_SETTING_KEYS = new Set([
   "child_lock_pin_hash",
   "app_name",
   "app_icon_color",
+  "auth_method",
+  "auth_shared_username",
+  "auth_shared_password_hash",
+  "auth_oidc_issuer",
+  "auth_oidc_client_id",
+  "auth_oidc_client_secret",
+  "auth_oidc_scopes",
+  "auth_oidc_mode",
+  "auth_oidc_claim",
+  "auth_oidc_autocreate",
+  "auth_oidc_logout_url",
+  "auth_proxy_header",
+  "auth_proxy_logout_url",
 ]);
 // Keys that live per profile (used for the /settings response and migration).
 export const USER_SETTING_KEYS = Object.keys(SETTING_DEFAULTS).filter((k) => !GLOBAL_SETTING_KEYS.has(k));
