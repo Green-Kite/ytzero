@@ -20,7 +20,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { api, type AppSettings, type Bucket, type PlaylistVideo, type SponsorSegment, type UserPlaylist, type Video, type VideoChapter, type VideoInfo, SB_CATEGORIES } from "../api";
-import { compactNumber, formatTimeAgo, formatViewsCount, useI18n } from "../i18n";
+import { compactNumber, formatTimeAgo, formatViewsCount, useI18n, type I18nKey } from "../i18n";
 import TagChip from "../components/TagChip";
 import { PlaylistIcon, PlaylistIconPicker } from "../components/PlaylistIcon";
 import { BUCKET_ICONS } from "../components/VideoCard";
@@ -46,21 +46,12 @@ function loadYouTubeApi(): Promise<void> {
 
 const CINEMA_MODE_KEY = "watchCinemaMode";
 const WATCH_LATER_GROUPS: {
-  label: { en: string; pl: string };
+  labelKey: I18nKey;
   buckets: Bucket[];
 }[] = [
-  {
-    label: { en: "Today", pl: "Dziś" },
-    buckets: ["today", "tonight"],
-  },
-  {
-    label: { en: "Tomorrow", pl: "Jutro" },
-    buckets: ["tomorrow", "tomorrow_evening"],
-  },
-  {
-    label: { en: "Weekend", pl: "Weekend" },
-    buckets: ["weekend"],
-  },
+  { labelKey: "groupToday", buckets: ["today", "tonight"] },
+  { labelKey: "groupTomorrow", buckets: ["tomorrow", "tomorrow_evening"] },
+  { labelKey: "groupWeekend", buckets: ["weekend"] },
 ];
 
 function fmtTime(s: number): string {
@@ -626,8 +617,8 @@ export default function WatchPage() {
               {menuOpen && (
                 <div className="dropdown-menu schedule-menu">
                   {WATCH_LATER_GROUPS.map((group) => (
-                    <div key={group.label.en} className="dropdown-menu-group">
-                      <div className="dropdown-menu-label">{group.label[language]}</div>
+                    <div key={group.labelKey} className="dropdown-menu-group">
+                      <div className="dropdown-menu-label">{t(group.labelKey)}</div>
                       <div className="dropdown-menu-row">
                         {group.buckets.map((b) => {
                           const Icon = BUCKET_ICONS[b];
@@ -791,7 +782,7 @@ export default function WatchPage() {
                         onClick={() => playerRef.current?.seekTo(seg.segment[0], true)}
                       >
                         <span className="sb-dot" />
-                        <span className="sb-segment-name">{cat?.label[language] ?? seg.category}</span>
+                        <span className="sb-segment-name">{cat ? t(cat.labelKey) : seg.category}</span>
                         <span className="sb-time">{fmtTime(seg.segment[0])} → {fmtTime(seg.segment[1])}</span>
                         <button
                           type="button"

@@ -95,7 +95,7 @@ export default function FeedPage({
   onPlay: (v: Video) => void;
   showToast: (m: string) => void;
 }) {
-  const { t, language } = useI18n();
+  const { t, locale } = useI18n();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const q = params.get("q") ?? "";
@@ -248,7 +248,7 @@ export default function FeedPage({
     setRefreshing(true);
     try {
       const r = await api.refresh();
-      showToast(language === "pl" ? `Odświeżono ${r.channels} kanałów, ${r.added} nowych filmów` : `Refreshed ${r.channels} channels, ${r.added} new videos`);
+      showToast(t("refreshed", { channels: r.channels, added: r.added }));
       setLoading(true);
       setPage(0);
       await load(0);
@@ -433,7 +433,7 @@ export default function FeedPage({
                     <div className="yt-result-title">{r.title}</div>
                     <div className="yt-result-meta">
                       {r.channelTitle}
-                      {r.viewCount != null && ` · ${r.viewCount.toLocaleString()} ${language === "pl" ? "wyświetleń" : "views"}`}
+                      {r.viewCount != null && ` · ${r.viewCount.toLocaleString(locale)} ${t("views")}`}
                     </div>
                   </div>
                 </div>

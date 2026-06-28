@@ -2,41 +2,42 @@ import { useCallback, useEffect, useState } from "react";
 import { Clock, Coffee, Sun, X } from "lucide-react";
 import { api, type Bucket, type Video } from "../api";
 import { emit } from "../events";
-import { type Language, bucketLabels, useI18n } from "../i18n";
+import { useI18n, type I18nKey } from "../i18n";
 import { BUCKET_ICONS } from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 
 const BUCKET_ORDER: Bucket[] = ["today", "tonight", "tomorrow", "tomorrow_evening", "weekend"];
-const BUCKET_ACTION_GROUPS: { label: { en: string; pl: string }; buckets: Bucket[] }[] = [
-  { label: { en: "Today", pl: "Dziś" }, buckets: ["today", "tonight"] },
-  { label: { en: "Tomorrow", pl: "Jutro" }, buckets: ["tomorrow", "tomorrow_evening"] },
-  { label: { en: "Weekend", pl: "Weekend" }, buckets: ["weekend"] },
+const BUCKET_ACTION_GROUPS: { labelKey: I18nKey; buckets: Bucket[] }[] = [
+  { labelKey: "groupToday", buckets: ["today", "tonight"] },
+  { labelKey: "groupTomorrow", buckets: ["tomorrow", "tomorrow_evening"] },
+  { labelKey: "groupWeekend", buckets: ["weekend"] },
 ];
-const BUCKET_SECTIONS: { id: string; label: { en: string; pl: string }; Icon: typeof Sun; buckets: Bucket[] }[] = [
-  { id: "today", label: { en: "Today", pl: "Dziś" }, Icon: Sun, buckets: ["today", "tonight"] },
-  { id: "tomorrow", label: { en: "Tomorrow", pl: "Jutro" }, Icon: Sun, buckets: ["tomorrow", "tomorrow_evening"] },
-  { id: "weekend", label: { en: "Weekend", pl: "Weekend" }, Icon: Coffee, buckets: ["weekend"] },
+const BUCKET_SECTIONS: { id: string; labelKey: I18nKey; Icon: typeof Sun; buckets: Bucket[] }[] = [
+  { id: "today", labelKey: "groupToday", Icon: Sun, buckets: ["today", "tonight"] },
+  { id: "tomorrow", labelKey: "groupTomorrow", Icon: Sun, buckets: ["tomorrow", "tomorrow_evening"] },
+  { id: "weekend", labelKey: "groupWeekend", Icon: Coffee, buckets: ["weekend"] },
 ];
 
-function formatShowFrom(showFrom: string, language: Language): string {
+type TranslateFn = ReturnType<typeof useI18n>["t"];
+
+function formatShowFrom(showFrom: string, t: TranslateFn, locale: string): string {
   const d = new Date(showFrom);
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const tomorrowStart = new Date(todayStart.getTime() + 86400000);
   const targetStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const locale = language === "pl" ? "pl-PL" : "en-US";
   const time = d.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
 
-  if (targetStart.getTime() === todayStart.getTime()) return language === "pl" ? `dziś o ${time}` : `today at ${time}`;
-  if (targetStart.getTime() === tomorrowStart.getTime()) return language === "pl" ? `jutro o ${time}` : `tomorrow at ${time}`;
+  if (targetStart.getTime() === todayStart.getTime()) return t("todayAtTime", { time });
+  if (targetStart.getTime() === tomorrowStart.getTime()) return t("tomorrowAtTime", { time });
 
   const weekday = d.toLocaleDateString(locale, { weekday: "long" });
   const date = d.toLocaleDateString(locale, { day: "numeric", month: "short" });
-  return language === "pl" ? `${weekday}, ${date} o ${time}` : `${weekday}, ${date} at ${time}`;
+  return t("scheduledAt", { weekday, date, time });
 }
 
 export default function WatchlistPage({ onPlay }: { onPlay: (v: Video) => void }) {
-  const { t, bucketLabel, language } = useI18n();
+  const { t, bucketLabel, locale } = useI18n();
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -74,11 +75,11 @@ export default function WatchlistPage({ onPlay }: { onPlay: (v: Video) => void }
         </div>
       ) : (
         <>
-          {sections.map(({ id, label, Icon, items }) => {
+          {sections.map(({ id, labelKey, Icon, items }) => {
             return (
               <section key={id} className="bucket-section">
                 <h2 className="bucket-title">
-                  <Icon /> {label[language]} <span className="count">{items.length}</span>
+                  <Icon /> {t(labelKey)} <span className="count">{items.length}</span>
                 </h2>
                 <div className="scheduled-list">
                   {items.map((v) => (
@@ -89,15 +90,15 @@ export default function WatchlistPage({ onPlay }: { onPlay: (v: Video) => void }
                         <div className="muted scheduled-channel">{v.channel_title}</div>
                       </div>
                       <div className="muted scheduled-date">
-                        {v.show_from ? formatShowFrom(v.show_from, language) : ""}
+                        {v.show_from ? formatShowFrom(v.show_from, t, locale) : ""}
                       </div>
                       <div className="scheduled-actions">
                         {BUCKET_ACTION_GROUPS.map((group) => (
                           <div
-                            key={group.label.en}
+                            key={group.labelKey}
                             className={`scheduled-action-block${group.buckets.length === 1 ? " scheduled-action-block--single" : ""}`}
                           >
-                            <div className="scheduled-action-label">{group.label[language]}</div>
+                            <div className="scheduled-action-label">{t(group.labelKey)}</div>
                             <div className="scheduled-action-group">
                               {group.buckets.map((bucket) => {
                                 const Icon = BUCKET_ICONS[bucket];
@@ -106,7 +107,7 @@ export default function WatchlistPage({ onPlay }: { onPlay: (v: Video) => void }
                                   <button
                                     key={bucket}
                                     className={`icon-btn${active ? " active" : ""}`}
-                                    title={active ? bucketLabels[language][bucket] : `${t("moveTo")} ${bucketLabels[language][bucket]}`}
+                                    title={active ? bucketLabel(bucket) : `${t("moveTo")} ${bucketLabel(bucket)}`}
                                     style={active ? { color: "var(--accent)" } : undefined}
                                     onClick={() => api.queue(v.video_id, bucket).then(() => { emit("queue-changed"); load(); })}
                                   >

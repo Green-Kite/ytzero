@@ -10,7 +10,7 @@ import { PlaylistIconPicker } from "../components/PlaylistIcon";
 import { TableSkeleton } from "../components/LoadingState";
 import Popconfirm from "../components/Popconfirm";
 import { emit } from "../events";
-import { formatVideoCount, useI18n, type I18nKey, type Language } from "../i18n";
+import { formatVideoCount, LANGUAGES, languageName, useI18n, type I18nKey, type Language } from "../i18n";
 
 type Tab = "channels" | "tags" | "playlists" | "display" | "external" | "logs" | "child";
 
@@ -94,14 +94,14 @@ function PlaylistSettingsItem({
       match_type: matchType,
       field,
     });
-    showToast(language === "pl" ? `Reguła dodana — dodano ${r.matched} istniejących filmów` : `Rule added - added ${r.matched} existing videos`);
+    showToast(t("ruleAddedExisting", { n: r.matched }));
     setPattern("");
     reload();
   };
 
   const applyRules = async () => {
     const r = await api.applyUserPlaylistRules(playlist.id);
-    showToast(language === "pl" ? `Zastosowano reguły — dopasowano ${r.matched} filmów` : `Rules applied - matched ${r.matched} videos`);
+    showToast(t("rulesApplied", { n: r.matched }));
     reload();
   };
 
@@ -113,7 +113,7 @@ function PlaylistSettingsItem({
         <span className="muted">{formatVideoCount(playlist.video_count, language)}</span>
         <button className="btn" onClick={save}>{t("save")}</button>
         <Popconfirm
-          message={language === "pl" ? `Usunąć „${playlist.name}"?` : `Delete "${playlist.name}"?`}
+          message={t("confirmDelete", { name: playlist.name })}
           onConfirm={() => api.deleteUserPlaylist(playlist.id).then(() => { reload(); emit("playlists-changed"); })}
         >
           <button className="icon-btn" title={t("deletePlaylist")}>
@@ -143,7 +143,7 @@ function PlaylistSettingsItem({
             <Plus /> {t("addRule")}
           </button>
           <button className="btn" onClick={applyRules}>
-            <Zap /> {language === "pl" ? "Zastosuj do bazy" : "Apply to database"}
+            <Zap /> {t("applyToDatabase")}
           </button>
         </div>
         {rules.length > 0 && (
@@ -194,7 +194,7 @@ function TagRow({ tag, onSave, onRemove }: { tag: Tag; onSave: (p: { name?: stri
             <input type="text" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} style={{ flex: 1, minWidth: 0 }} />
           </div>
         </td>
-        <td className="muted">{formatVideoCount(tag.video_count ?? 0, language)} · {language === "pl" ? `${tag.channel_count ?? 0} kanałów` : `${tag.channel_count ?? 0} channels`}</td>
+        <td className="muted">{formatVideoCount(tag.video_count ?? 0, language)} · {t("tagChannelCount", { n: tag.channel_count ?? 0 })}</td>
         <td className="shrink">
           <Tooltip text={t("filterOnlyHint")} pos="left">
             <button
@@ -219,7 +219,7 @@ function TagRow({ tag, onSave, onRemove }: { tag: Tag; onSave: (p: { name?: stri
   return (
     <tr>
       <td><TagChip tag={{ ...tag, name, color }} /></td>
-      <td className="muted">{formatVideoCount(tag.video_count ?? 0, language)} · {language === "pl" ? `${tag.channel_count ?? 0} kanałów` : `${tag.channel_count ?? 0} channels`}</td>
+      <td className="muted">{formatVideoCount(tag.video_count ?? 0, language)} · {t("tagChannelCount", { n: tag.channel_count ?? 0 })}</td>
       <td className="shrink">
         <Tooltip text={t("filterOnlyHint")} pos="left">
           <button
@@ -234,7 +234,7 @@ function TagRow({ tag, onSave, onRemove }: { tag: Tag; onSave: (p: { name?: stri
       <td className="shrink">
         <div style={{ display: "flex", gap: 4 }}>
           <button className="icon-btn" title={t("edit")} onClick={() => setEditing(true)}><Pencil /></button>
-          <Popconfirm message={language === "pl" ? `Usunąć tag „${tag.name}"?` : `Delete tag "${tag.name}"?`} onConfirm={onRemove}>
+          <Popconfirm message={t("confirmDelete", { name: tag.name })} onConfirm={onRemove}>
             <button className="icon-btn" title={t("delete")}><Trash2 /></button>
           </Popconfirm>
         </div>
@@ -300,7 +300,7 @@ function RuleRow({ rule, tags, onSave, onRemove }: { rule: Rule; tags: Tag[]; on
 }
 
 function FilterRuleRow({ rule, channels, onSave, onRemove }: { rule: FilterRule; channels: Channel[]; onSave: (p: Parameters<typeof api.updateFilterRule>[1]) => Promise<void>; onRemove: () => void }) {
-  const { t, language } = useI18n();
+  const { t } = useI18n();
   const [editing, setEditing] = useState(false);
   const [pattern, setPattern] = useState(rule.pattern);
   const [matchType, setMatchType] = useState<"contains" | "regex">(rule.match_type);
@@ -360,7 +360,7 @@ function FilterRuleRow({ rule, channels, onSave, onRemove }: { rule: FilterRule;
       <td className="shrink">
         <div style={{ display: "flex", gap: 4 }}>
           <button className="icon-btn" title={t("edit")} onClick={() => setEditing(true)}><Pencil /></button>
-          <Popconfirm message={language === "pl" ? `Usunąć filtr „${rule.pattern}"?` : `Delete filter "${rule.pattern}"?`} onConfirm={onRemove}>
+          <Popconfirm message={t("confirmDelete", { name: rule.pattern })} onConfirm={onRemove}>
             <button className="icon-btn" title={t("delete")}><Trash2 /></button>
           </Popconfirm>
         </div>
@@ -502,7 +502,7 @@ function SidebarNavEditor({ value, onChange }: { value: NavConfigEntry[]; onChan
 }
 
 export default function SettingsPage({ showToast }: { showToast: (m: string) => void }) {
-  const { t, language, setLanguage } = useI18n();
+  const { t, language, setLanguage, locale } = useI18n();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = (searchParams.get("tab") as Tab) ?? "channels";
@@ -805,12 +805,12 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     setAddingChannel(true);
     try {
       const r = await api.addChannel(channelUrl.trim());
-      showToast(language === "pl" ? `Dodano kanał: ${r.title || r.channel_id}` : `Added channel: ${r.title || r.channel_id}`);
+      showToast(t("channelAdded", { name: r.title || r.channel_id }));
       setChannelUrl("");
       await load();
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      showToast(message === "HTTP 500" ? t("addChannelNotFoundError") : `${language === "pl" ? "Błąd" : "Error"}: ${message}`);
+      showToast(message === "HTTP 500" ? t("addChannelNotFoundError") : `${t("error")}: ${message}`);
     } finally {
       setAddingChannel(false);
     }
@@ -819,10 +819,10 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const importFile = async (file: File) => {
     try {
       const r = await api.importFile(file);
-      showToast(language === "pl" ? `Znaleziono ${r.found} kanałów, dodano ${r.added} nowych. Pobieranie filmów w tle...` : `Found ${r.found} channels, added ${r.added} new. Fetching videos in the background...`);
+      showToast(t("importFound", { found: r.found, added: r.added }));
       load();
     } catch (e) {
-      showToast(`${language === "pl" ? "Błąd importu" : "Import error"}: ${e instanceof Error ? e.message : e}`);
+      showToast(`${t("importError")}: ${e instanceof Error ? e.message : e}`);
     }
   };
 
@@ -835,7 +835,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
       load();
       emit("tags-changed");
     } catch (e) {
-      showToast(`${language === "pl" ? "Błąd" : "Error"}: ${e instanceof Error ? e.message : String(e)}`);
+      showToast(`${t("error")}: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setAddingTag(false);
     }
@@ -849,7 +849,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
       match_type: ruleMatch,
       field: ruleField,
     });
-    showToast(language === "pl" ? `Reguła dodana — otagowano ${r.matched} istniejących filmów` : `Rule added - tagged ${r.matched} existing videos`);
+    showToast(t("ruleTaggedExisting", { n: r.matched }));
     setRulePattern("");
     load();
   };
@@ -872,7 +872,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
       action: filterAction,
       channel_id: filterChannel || null,
     });
-    showToast(language === "pl" ? `Reguła dodana — odrzucono ${r.archived} filmów` : `Rule added - rejected ${r.archived} videos`);
+    showToast(t("ruleRejected", { n: r.archived }));
     setFilterPattern("");
     load();
   };
@@ -964,11 +964,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
 
           {channelSubTab === "list" && (
             <>
-              <p className="hint">
-                {language === "pl"
-                  ? "Dodaj kanał po linku (np. https://www.youtube.com/@nazwa) albo zaimportuj subskrypcje - OPML lub subscriptions.csv z Google Takeout."
-                  : "Add a channel by link (for example https://www.youtube.com/@name) or import subscriptions from OPML or subscriptions.csv from Google Takeout."}
-              </p>
+              <p className="hint">{t("addChannelHint")}</p>
               <div className="form-row">
                 <input
                   type="text"
@@ -1116,7 +1112,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                       </td>
                       <td className="shrink">
                         <Popconfirm
-                          message={language === "pl" ? `Usunąć kanał „${ch.title}"?` : `Delete channel "${ch.title}"?`}
+                          message={t("confirmDelete", { name: ch.title })}
                           onConfirm={() => api.removeChannel(ch.channel_id).then(load)}
                         >
                           <button className="icon-btn" title={t("deleteChannel")}>
@@ -1404,9 +1400,9 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                 setLanguage(next).then(() => showToast(t("displaySettingsSaved"))).catch(console.error);
               }}
             >
-              <option value="de">Deutsch</option>
-              <option value="en">English</option>
-              <option value="pl">polski</option>
+              {LANGUAGES.map((code) => (
+                <option key={code} value={code}>{languageName(code)}</option>
+              ))}
             </select>
           </div>
 
@@ -1478,7 +1474,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                 return (
                   <div key={cat.id} className="sb-category-row">
                     <span className="sb-category-dot" style={{ background: cat.color }} />
-                    <span className="sb-category-name">{cat.label[language]}</span>
+                    <span className="sb-category-name">{t(cat.labelKey)}</span>
                     <button
                       className={`switch${active ? " on" : ""}`}
                       role="switch"
@@ -1618,9 +1614,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
           ) : (
             <>
               <div className="logs-meta">
-                {t("logsShowing")
-                  .replace("{count}", String(logs.lines.length))
-                  .replace("{size}", logs.size.toLocaleString(language === "pl" ? "pl-PL" : "en-US"))}
+                {t("logsShowing", { count: logs.lines.length, size: logs.size.toLocaleString(locale) })}
               </div>
               <div className="logs-viewer">
                 {logs.lines.map((line, i) => (

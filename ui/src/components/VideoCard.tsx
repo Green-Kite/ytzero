@@ -16,31 +16,9 @@ import { Link } from "react-router-dom";
 import { useDrag } from "@use-gesture/react";
 import { api, type Bucket, type Video } from "../api";
 import { emit } from "../events";
-import { compactNumber, formatTimeAgo, formatViewsCount, useI18n } from "../i18n";
+import { formatTimeAgo, useI18n, type I18nKey } from "../i18n";
 import { img } from "../img";
 import Tooltip from "./Tooltip";
-
-export function compactViews(views: number | null): string {
-  if (views == null) return "";
-  return compactNumber(views, "en");
-}
-
-export function formatViews(views: number | null): string {
-  if (views == null) return "";
-  return formatViewsCount(views, "en");
-}
-
-export function timeAgo(iso: string | null): string {
-  if (!iso) return "";
-  const diff = Date.now() - new Date(iso).getTime();
-  const min = Math.floor(diff / 60_000);
-  if (min < 60) return `${min}m ago`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 30) return `${d}d ago`;
-  return new Date(iso).toLocaleDateString("en-US");
-}
 
 export const BUCKET_ICONS: Record<Bucket, typeof CalendarDays> = {
   today: Sun,
@@ -50,10 +28,10 @@ export const BUCKET_ICONS: Record<Bucket, typeof CalendarDays> = {
   weekend: Coffee,
 };
 
-const BUCKET_GROUPS: { label: { en: string; pl: string }; buckets: Bucket[] }[] = [
-  { label: { en: "Today", pl: "Dziś" }, buckets: ["today", "tonight"] },
-  { label: { en: "Tomorrow", pl: "Jutro" }, buckets: ["tomorrow", "tomorrow_evening"] },
-  { label: { en: "Weekend", pl: "Weekend" }, buckets: ["weekend"] },
+const BUCKET_GROUPS: { labelKey: I18nKey; buckets: Bucket[] }[] = [
+  { labelKey: "groupToday", buckets: ["today", "tonight"] },
+  { labelKey: "groupTomorrow", buckets: ["tomorrow", "tomorrow_evening"] },
+  { labelKey: "groupWeekend", buckets: ["weekend"] },
 ];
 const SWIPE_THRESHOLD = 90;
 const SWIPE_EXIT_GUTTER = 24;
@@ -360,10 +338,10 @@ export default function VideoCard({
               <div className="thumb-actions-row thumb-actions-row--schedule">
                 {BUCKET_GROUPS.map((group) => (
                   <div
-                    key={group.label.en}
+                    key={group.labelKey}
                     className={`schedule-action-group${group.buckets.length === 1 ? " schedule-action-group--single" : ""}`}
                   >
-                    <div className="schedule-action-label">{group.label[language]}</div>
+                    <div className="schedule-action-label">{t(group.labelKey)}</div>
                     <div className="schedule-action-segment">
                       {group.buckets.map((b) => {
                         const Icon = BUCKET_ICONS[b];

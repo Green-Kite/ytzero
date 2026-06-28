@@ -85,7 +85,7 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: (v: Video) => voi
           )}
         </div>
         <div className="playlist-actions">
-          <Popconfirm message={language === "pl" ? `Usunąć playlistę „${playlist.name}"?` : `Delete playlist "${playlist.name}"?`} onConfirm={removePlaylist}>
+          <Popconfirm message={t("confirmDelete", { name: playlist.name })} onConfirm={removePlaylist}>
             <button className="btn danger">
               <Trash2 /> {t("deletePlaylist")}
             </button>

@@ -1,18 +1,11 @@
 import { X } from "lucide-react";
 import type { Tag } from "../api";
-import { useI18n } from "../i18n";
+import { useI18n, type I18nKey } from "../i18n";
 
-const SOURCE_LABEL: Record<"en" | "pl", Record<string, string>> = {
-  en: {
-    auto: "Automatic tag",
-    channel: "Channel tag",
-    manual: "Manual tag",
-  },
-  pl: {
-    auto: "Tag automatyczny",
-    channel: "Tag kanału",
-    manual: "Tag ręczny",
-  },
+const SOURCE_LABEL_KEY: Record<string, I18nKey> = {
+  auto: "tagSourceAuto",
+  channel: "tagSourceChannel",
+  manual: "tagSourceManual",
 };
 
 function tagChipStyle(color: string) {
@@ -41,12 +34,12 @@ export default function TagChip({
   onClick?: () => void;
   onRemove?: () => void;
 }) {
-  const { language } = useI18n();
+  const { t } = useI18n();
   return (
     <span
       className={`tag-pill${onClick ? " clickable" : ""}`}
       onClick={onClick}
-      title={tag.source ? SOURCE_LABEL[language][tag.source] : undefined}
+      title={tag.source && SOURCE_LABEL_KEY[tag.source] ? t(SOURCE_LABEL_KEY[tag.source]) : undefined}
       style={tagChipStyle(tag.color)}
     >
       {tag.name}

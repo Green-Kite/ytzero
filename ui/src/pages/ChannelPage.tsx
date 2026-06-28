@@ -230,7 +230,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
               {about.stats.map((s, i) =>
                 s.startsWith("@")
                   ? <span key={i}>{s}</span>
-                  : <span key={i}>{s} {language === "pl" ? "filmów" : t("videos")}</span>
+                  : <span key={i}>{s} {t("videosSuffix")}</span>
               )}
             </div>
           )}
@@ -262,9 +262,9 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
                   const formatted = isNaN(d.getTime())
                     ? about.joinedDate
                     : d.toLocaleDateString(locale, { year: "numeric", month: "long", day: "numeric" });
-                  return <span>{language === "pl" ? "Dołączył(a)" : "Joined"} {formatted}</span>;
+                  return <span>{t("joined")} {formatted}</span>;
                 })()}
-                {about.viewCount && <span>{about.viewCount} {language === "pl" ? "wyświetleń" : "views"}</span>}
+                {about.viewCount && <span>{about.viewCount} {t("views")}</span>}
               </div>
             </div>
           )}

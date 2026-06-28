@@ -78,79 +78,18 @@ import { useI18n } from "../i18n";
 
 type IconComponent = LucideIcon;
 
+// Icon ids only. Human-readable, searchable labels live per-language in the i18n
+// locale files (iconLabels) and are resolved via the iconLabel() helper.
 export const PLAYLIST_ICONS = [
-  { id: "ListMusic", label: "Lista" },
-  { id: "Bookmark", label: "Zakładka" },
-  { id: "Star", label: "Gwiazdka" },
-  { id: "Folder", label: "Folder" },
-  { id: "Archive", label: "Archiwum" },
-  { id: "Heart", label: "Serce" },
-  { id: "ThumbsUp", label: "Polecane" },
-  { id: "Eye", label: "Obejrzane" },
-  { id: "Clock", label: "Czas" },
-  { id: "Calendar", label: "Kalendarz" },
-  { id: "History", label: "Historia" },
-  { id: "Bell", label: "Alert" },
-  { id: "PlaySquare", label: "Odtwarzanie" },
-  { id: "Clapperboard", label: "Film" },
-  { id: "Film", label: "Kino" },
-  { id: "Tv", label: "TV" },
-  { id: "Radio", label: "Radio" },
-  { id: "Music", label: "Muzyka" },
-  { id: "Headphones", label: "Słuchanie" },
-  { id: "Mic", label: "Podcast" },
-  { id: "Gamepad2", label: "Gry" },
-  { id: "Trophy", label: "Najlepsze" },
-  { id: "Dumbbell", label: "Trening" },
-  { id: "Plane", label: "Podróże" },
-  { id: "Map", label: "Mapa" },
-  { id: "Camera", label: "Foto" },
-  { id: "Image", label: "Obrazy" },
-  { id: "Palette", label: "Kreatywne" },
-  { id: "Brush", label: "Sztuka" },
-  { id: "PenTool", label: "Projekt" },
-  { id: "BookOpen", label: "Książki" },
-  { id: "GraduationCap", label: "Nauka" },
-  { id: "Newspaper", label: "News" },
-  { id: "Lightbulb", label: "Pomysły" },
-  { id: "Brain", label: "Myślenie" },
-  { id: "Code2", label: "Kod" },
-  { id: "Terminal", label: "Terminal" },
-  { id: "Laptop", label: "Technologia" },
-  { id: "Cpu", label: "Sprzęt" },
-  { id: "Bot", label: "AI" },
-  { id: "Database", label: "Dane" },
-  { id: "ChartBar", label: "Analiza" },
-  { id: "Briefcase", label: "Praca" },
-  { id: "Building2", label: "Firma" },
-  { id: "PiggyBank", label: "Finanse" },
-  { id: "ShoppingCart", label: "Zakupy" },
-  { id: "Wrench", label: "Narzędzia" },
-  { id: "Hammer", label: "Budowa" },
-  { id: "Settings", label: "Ustawienia" },
-  { id: "Rocket", label: "Projekty" },
-  { id: "Zap", label: "Szybkie" },
-  { id: "Sparkles", label: "Inspiracje" },
-  { id: "Flame", label: "Hot" },
-  { id: "Gem", label: "Cenne" },
-  { id: "Shield", label: "Bezpieczne" },
-  { id: "Lock", label: "Prywatne" },
-  { id: "Globe", label: "Świat" },
-  { id: "Cloud", label: "Chmura" },
-  { id: "Sun", label: "Dzień" },
-  { id: "Moon", label: "Noc" },
-  { id: "Coffee", label: "Kawa" },
-  { id: "Utensils", label: "Jedzenie" },
-  { id: "Car", label: "Auto" },
-  { id: "Bike", label: "Rower" },
-  { id: "Home", label: "Dom" },
-  { id: "Users", label: "Ludzie" },
-  { id: "MessageCircle", label: "Rozmowy" },
-  { id: "Mail", label: "Poczta" },
-  { id: "Link", label: "Linki" },
-  { id: "Hash", label: "Tag" },
-  { id: "PlusCircle", label: "Dodane" },
-  { id: "CheckCircle", label: "Gotowe" },
+  "ListMusic", "Bookmark", "Star", "Folder", "Archive", "Heart", "ThumbsUp", "Eye",
+  "Clock", "Calendar", "History", "Bell", "PlaySquare", "Clapperboard", "Film", "Tv",
+  "Radio", "Music", "Headphones", "Mic", "Gamepad2", "Trophy", "Dumbbell", "Plane",
+  "Map", "Camera", "Image", "Palette", "Brush", "PenTool", "BookOpen", "GraduationCap",
+  "Newspaper", "Lightbulb", "Brain", "Code2", "Terminal", "Laptop", "Cpu", "Bot",
+  "Database", "ChartBar", "Briefcase", "Building2", "PiggyBank", "ShoppingCart", "Wrench",
+  "Hammer", "Settings", "Rocket", "Zap", "Sparkles", "Flame", "Gem", "Shield", "Lock",
+  "Globe", "Cloud", "Sun", "Moon", "Coffee", "Utensils", "Car", "Bike", "Home", "Users",
+  "MessageCircle", "Mail", "Link", "Hash", "PlusCircle", "CheckCircle",
 ] as const;
 
 const ICONS: Record<string, IconComponent> = {
@@ -226,12 +165,6 @@ const ICONS: Record<string, IconComponent> = {
   Wrench,
   Zap,
 };
-const LABELS = Object.fromEntries(PLAYLIST_ICONS.map((item) => [item.id, item.label]));
-
-function englishLabel(id: string, fallback: string): string {
-  return id.replace(/([a-z])([A-Z])/g, "$1 $2") || fallback;
-}
-
 function getIcon(icon?: string): IconComponent {
   return ICONS[icon || ""] ?? ListMusic;
 }
@@ -263,7 +196,7 @@ export function PlaylistIconPicker({
   onChange: (value: string) => void;
   compact?: boolean;
 }) {
-  const { t, language } = useI18n();
+  const { t, iconLabel } = useI18n();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [style, setStyle] = useState<CSSProperties>({});
@@ -274,11 +207,10 @@ export function PlaylistIconPicker({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return PLAYLIST_ICONS;
-    return PLAYLIST_ICONS.filter((item) => {
-      const label = language === "pl" ? item.label : englishLabel(item.id, item.label);
-      return label.toLowerCase().includes(q) || item.id.toLowerCase().includes(q);
+    return PLAYLIST_ICONS.filter((id) => {
+      return iconLabel(id).toLowerCase().includes(q) || id.toLowerCase().includes(q);
     });
-  }, [language, query]);
+  }, [iconLabel, query]);
 
   useEffect(() => {
     if (!open) return;
@@ -308,7 +240,7 @@ export function PlaylistIconPicker({
     };
   }, [open]);
 
-  const selectedLabel = language === "pl" ? (LABELS[value] ?? "Lista") : englishLabel(value, "List");
+  const selectedLabel = iconLabel(value);
 
   return (
     <>
@@ -317,7 +249,7 @@ export function PlaylistIconPicker({
         ref={triggerRef}
         className={`playlist-icon-trigger${compact ? " compact" : ""}`}
         onClick={() => setOpen((v) => !v)}
-        aria-label={language === "pl" ? "Wybierz ikonę playlisty" : "Choose playlist icon"}
+        aria-label={t("choosePlaylistIcon")}
         title={selectedLabel}
       >
         <span className="playlist-icon-trigger-mark"><PlaylistIcon icon={value} /></span>
@@ -332,19 +264,19 @@ export function PlaylistIconPicker({
             onChange={(e) => setQuery(e.target.value)}
           />
           <div className="playlist-icon-grid">
-            {filtered.map((item) => {
-              const Icon = getIcon(item.id);
-              const label = language === "pl" ? item.label : englishLabel(item.id, item.label);
+            {filtered.map((id) => {
+              const Icon = getIcon(id);
+              const label = iconLabel(id);
               return (
                 <button
-                  key={item.id}
+                  key={id}
                   type="button"
-                  className={`playlist-icon-choice${value === item.id ? " active" : ""}`}
+                  className={`playlist-icon-choice${value === id ? " active" : ""}`}
                   title={label}
                   aria-label={label}
                   onClick={(e) => {
                     e.stopPropagation();
-                    onChange(item.id);
+                    onChange(id);
                     setOpen(false);
                     setQuery("");
                   }}

@@ -8,7 +8,7 @@ import TagChip from "../components/TagChip";
 import { TableSkeleton } from "../components/LoadingState";
 
 export default function SubscriptionsPage() {
-  const { t, language } = useI18n();
+  const { t } = useI18n();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
@@ -36,11 +36,7 @@ export default function SubscriptionsPage() {
       <div className="page-header-row">
         <div>
           <h1 className="page-title">{t("subscriptions")}</h1>
-          <p className="page-hint">
-            {language === "pl"
-              ? `${channels.length} obserwowanych kanałów`
-              : `${channels.length} followed channels`}
-          </p>
+          <p className="page-hint">{t("followedChannelsCount", { n: channels.length })}</p>
         </div>
       </div>
 
