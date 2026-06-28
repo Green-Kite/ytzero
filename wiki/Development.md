@@ -55,15 +55,3 @@ The backend is TypeScript executed by Bun. In development it runs with:
 cd app
 bun run dev
 ```
-
-## Editing this wiki
-
-The wiki pages are kept in the `wiki/` folder of the main repository and published to the GitHub Wiki. To publish changes, push the contents of `wiki/` to the wiki's git remote:
-
-```bash
-git clone git@github.com:Pelski/ytzero.wiki.git
-cp wiki/*.md ytzero.wiki/
-cd ytzero.wiki && git add . && git commit -m "Update wiki" && git push
-```
-
-(The GitHub Wiki must be initialized once from the repository's **Wiki** tab before it has a git remote.)
