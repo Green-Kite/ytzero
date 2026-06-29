@@ -10,8 +10,7 @@ import {
   Undo2,
 } from "lucide-react";
 import type { CSSProperties, MouseEvent, PointerEvent } from "react";
-import { useId, useRef, useState } from "react";
-import { flushSync } from "react-dom";
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useDrag } from "@use-gesture/react";
 import { api, type Bucket, type Video } from "../api";
@@ -37,16 +36,9 @@ const SWIPE_THRESHOLD = 90;
 const SWIPE_EXIT_GUTTER = 24;
 const SWIPE_MAX_DRAG = 160;
 const SWIPE_FEEDBACK_MS = 720;
+const FINAL_EXIT_MS = 280;
 
-type ViewTransitionDocument = Document & {
-  startViewTransition?: (callback: () => void) => unknown;
-};
-
-function viewTransitionIdent(value: string) {
-  return value.replace(/[^a-zA-Z0-9_-]/g, "_");
-}
-
-export function formatVideoDuration(duration: string | null): string {
+function formatVideoDuration(duration: string | null): string {
   if (!duration) return "";
   const raw = duration.trim();
   if (!raw) return "";
@@ -95,7 +87,7 @@ export default function VideoCard({
 }: {
   video: Video;
   onPlay: (v: Video) => void;
-  onChanged: () => void;
+  onChanged: (videoId?: string) => void;
   showRestore?: boolean;
   showChannelAvatar?: boolean;
   onRemoveFromPlaylist?: (videoId: string) => Promise<unknown>;
@@ -104,7 +96,6 @@ export default function VideoCard({
   showWatchProgress?: boolean;
 }) {
   const { t, bucketLabel, language } = useI18n();
-  const instanceId = useId();
   const [fading, setFading] = useState(false);
   const [removed, setRemoved] = useState(false);
   const [actionProximity, setActionProximity] = useState(0);
@@ -115,31 +106,32 @@ export default function VideoCard({
   const cardRef = useRef<HTMLDivElement>(null);
   const lastProximityRef = useRef(0);
   const blockNextThumbClickRef = useRef(false);
-  const viewTransitionName = `video-card-${viewTransitionIdent(video.video_id)}-${viewTransitionIdent(instanceId)}`;
 
-  const removeWithLayoutAnimation = () => {
-    const doc = document as ViewTransitionDocument;
-    if (doc.startViewTransition) {
-      const t = doc.startViewTransition(() => {
-        flushSync(() => setRemoved(true));
-      }) as { finished?: Promise<void> };
-      t.finished?.then(onChanged) ?? onChanged();
-    } else {
-      setRemoved(true);
-      onChanged();
-    }
+  const exitLeft = () => {
+    const cardWidth = cardRef.current?.getBoundingClientRect().width ?? SWIPE_MAX_DRAG;
+    setSwipeX(-(cardWidth + SWIPE_EXIT_GUTTER));
   };
 
-  const fade = (fn: () => Promise<unknown>) => {
+  const removeWithLayoutAnimation = () => {
+    exitLeft();
+    setFading(true);
+    window.setTimeout(() => {
+      setRemoved(true);
+      onChanged(video.video_id);
+    }, FINAL_EXIT_MS);
+  };
+
+  const fade = (fn: () => Promise<unknown>, dir: "left" | "right" = "left") => {
     fn().then(() => {
+      setCommittedDir(dir);
       setFading(true);
-      setTimeout(removeWithLayoutAnimation, 280);
+      setTimeout(removeWithLayoutAnimation, 180);
     });
   };
 
-  const act = (e: MouseEvent, fn: () => Promise<unknown>) => {
+  const act = (e: MouseEvent, fn: () => Promise<unknown>, dir?: "left" | "right") => {
     e.stopPropagation();
-    fade(fn);
+    fade(fn, dir);
   };
 
   const queueAct = (fn: () => Promise<unknown>) =>
@@ -147,6 +139,9 @@ export default function VideoCard({
       emit("queue-changed");
       return result;
     });
+
+  const markWatchedAndArchive = () =>
+    api.watch(video.video_id).then(() => api.archiveVideo(video.video_id));
 
   const bind = useDrag(
     ({ active, movement: [mx], tap, cancel, last }) => {
@@ -187,7 +182,7 @@ export default function VideoCard({
       setFading(true);
       const action = dir === "left"
         ? api.archiveVideo(video.video_id)
-        : api.watch(video.video_id).then(() => api.archiveVideo(video.video_id));
+        : markWatchedAndArchive();
       action.then(() => {
         setTimeout(removeWithLayoutAnimation, SWIPE_FEEDBACK_MS);
       });
@@ -263,7 +258,7 @@ export default function VideoCard({
   if (removed) return null;
 
   return (
-    <div className={`swipe-wrap${fading ? " card-fading" : ""}`} style={{ viewTransitionName } as CSSProperties}>
+    <div className={`swipe-wrap${fading ? " card-fading" : ""}`}>
       {activeSwipeDir === "right" && (
         <div className="swipe-reveal swipe-reveal--left" style={{ width: revealWidth, opacity: fading ? undefined : contentOpacity }}>
           <span className="swipe-reveal-icon">
@@ -364,14 +359,14 @@ export default function VideoCard({
               <div className="thumb-actions-row secondary">
                 {video.status !== "archived" && (
                   <Tooltip text={t("reject")}>
-                    <button className="action-btn" onClick={(e) => act(e, () => api.archiveVideo(video.video_id))}>
+                    <button className="action-btn" onClick={(e) => act(e, () => api.archiveVideo(video.video_id), "left")}>
                       <Archive />
                     </button>
                   </Tooltip>
                 )}
                 {video.status !== "archived" && (
                   <Tooltip text={t("watched")}>
-                    <button className="action-btn" onClick={(e) => act(e, () => api.archiveVideo(video.video_id))}>
+                    <button className="action-btn" onClick={(e) => act(e, markWatchedAndArchive, "right")}>
                       <Eye />
                     </button>
                   </Tooltip>

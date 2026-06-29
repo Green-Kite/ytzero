@@ -1277,13 +1277,12 @@ button.video-card:disabled { cursor: default; }
   letter-spacing: 0.2px;
 }
 
-/* card fading — only visual fade; layout shift is handled by View Transition */
+/* card removal: slide the card away, then let the grid reflow once */
 .video-card {
   transition: opacity 0.26s ease, transform 0.26s ease;
 }
 .swipe-wrap.card-fading .video-card {
   opacity: 0;
-  transform: scale(0.96);
   pointer-events: none;
 }
 .swipe-wrap.card-fading .swipe-reveal {
@@ -1305,17 +1304,6 @@ button.video-card:disabled { cursor: default; }
   writing-mode: horizontal-tb;
   transform: none;
   opacity: 1;
-}
-
-::view-transition-group(*) {
-  animation-duration: 0.38s;
-  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
-}
-::view-transition-old(*) {
-  animation: none;
-}
-::view-transition-new(*) {
-  animation: none;
 }
 
 /* avatar size scales with grid */
@@ -2746,6 +2734,12 @@ a.playlist-item { text-decoration: none; }
   .skeleton::after,
   .spin {
     animation: none;
+  }
+  .swipe-wrap,
+  .swipe-reveal,
+  .video-card,
+  .swipe-wrap.card-fading .swipe-reveal {
+    transition: none;
   }
 }
 

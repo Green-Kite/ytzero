@@ -267,6 +267,12 @@ export default function FeedPage({
     loadInProgress();
   };
 
+  const removeFromFeed = (videoId?: string) => {
+    if (videoId) setVideos((current) => current.filter((v) => v.video_id !== videoId));
+    loadQueued();
+    loadInProgress();
+  };
+
   // Time-based queued sections — only show videos that have unlocked.
   const now = new Date();
   const dueQueuedVideos = queued
@@ -375,7 +381,7 @@ export default function FeedPage({
         <>
           <div className="video-grid video-grid--sm">
             {(searchExpanded ? videos : videos.slice(0, 8)).map((v) => (
-              <VideoCard key={v.video_id} video={v} onPlay={onPlay} onChanged={reload} />
+              <VideoCard key={v.video_id} video={v} onPlay={onPlay} onChanged={removeFromFeed} />
             ))}
           </div>
           {loadingMore && <VideoGridSkeleton count={4} gridSize="sm" />}
@@ -396,7 +402,7 @@ export default function FeedPage({
         <>
           <div className={`video-grid video-grid--${gridSize}`}>
             {videos.map((v) => (
-              <VideoCard key={v.video_id} video={v} onPlay={onPlay} onChanged={reload} />
+              <VideoCard key={v.video_id} video={v} onPlay={onPlay} onChanged={removeFromFeed} />
             ))}
           </div>
           {loadingMore && <VideoGridSkeleton count={4} gridSize={gridSize} />}
