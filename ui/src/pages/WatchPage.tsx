@@ -11,6 +11,7 @@ import {
   Clapperboard,
   ExternalLink,
   Eye,
+  Gauge,
   Pause,
   Play,
   Share2,
@@ -19,7 +20,7 @@ import {
   ThumbsUp,
   Undo2,
 } from "lucide-react";
-import { api, type AppSettings, type Bucket, type PlaylistVideo, type SponsorSegment, type UserPlaylist, type Video, type VideoChapter, type VideoInfo, SB_CATEGORIES } from "../api";
+import { api, type AppSettings, type Bucket, type PlaylistVideo, type SponsorSegment, type UserPlaylist, type Video, type VideoChapter, type VideoInfo, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import { compactNumber, formatTimeAgo, formatViewsCount, useI18n, type I18nKey } from "../i18n";
 import TagChip from "../components/TagChip";
 import { PlaylistIcon, PlaylistIconPicker } from "../components/PlaylistIcon";
@@ -157,11 +158,17 @@ export default function WatchPage() {
   const [disabledSegs, setDisabledSegs] = useState<Set<string>>(new Set());
   const [chapters, setChapters] = useState<VideoChapter[]>([]);
   const [playlistVideos, setPlaylistVideos] = useState<PlaylistVideo[]>([]);
+  const [speed, setSpeed] = useState("1");
+  const [speedOpen, setSpeedOpen] = useState(false);
   // Path to the next playlist video, read by the player's onStateChange when a
   // video ends. A ref keeps the player effect free of playlist dependencies.
   const nextInPlaylistRef = useRef<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const playlistMenuRef = useRef<HTMLDivElement>(null);
+  const speedMenuRef = useRef<HTMLDivElement>(null);
+  // Desired playback rate, read by the player's onReady/onStateChange so the
+  // player effect doesn't need speed in its dependency list.
+  const speedRef = useRef("1");
   const likeButtonRef = useRef<HTMLButtonElement>(null);
   const playerWrapRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
@@ -175,6 +182,14 @@ export default function WatchPage() {
     api.settings().then((r) => setSettings(r.settings)).catch(() => setSettings(null));
     api.config().then((r) => setAppUrl(r.app_url)).catch(() => {});
   }, []);
+
+  // Effective playback rate: per-channel override, else the global default.
+  // Kept in a ref so the player effect can read it without re-creating the player.
+  useEffect(() => {
+    const eff = video?.channel_playback_speed ?? settings?.player_speed ?? "1";
+    setSpeed(eff);
+    speedRef.current = eff;
+  }, [video?.channel_playback_speed, settings?.player_speed]);
 
   useEffect(() => {
     sbSegmentsRef.current = sbSegments;
@@ -306,6 +321,12 @@ export default function WatchPage() {
 
     let pollInterval: ReturnType<typeof setInterval>;
     let destroyed = false;
+    // YT resets the rate to 1× on load, so apply the desired speed once the
+    // player is ready and again on the first PLAYING event to make it stick.
+    let speedApplied = false;
+    const applySpeed = (p: any) => {
+      try { p?.setPlaybackRate(Number(speedRef.current)); } catch {}
+    };
 
     const inner = document.createElement("div");
     inner.id = `yt-inner-${id}`;
@@ -321,7 +342,13 @@ export default function WatchPage() {
         height: "100%",
         playerVars,
         events: {
+          onReady: (e: any) => applySpeed(e.target),
           onStateChange: (e: any) => {
+            // 1 === playing: apply the desired speed once (YT resets on load).
+            if (e?.data === 1 && !speedApplied) {
+              speedApplied = true;
+              applySpeed(e.target);
+            }
             // 0 === ended: advance to the next playlist video when in a playlist.
             if (e?.data === 0 && nextInPlaylistRef.current) {
               navigate(nextInPlaylistRef.current);
@@ -381,6 +408,29 @@ export default function WatchPage() {
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [menuOpen]);
+
+  useEffect(() => {
+    if (!speedOpen) return;
+    const close = (e: MouseEvent) => {
+      if (!speedMenuRef.current?.contains(e.target as Node)) setSpeedOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [speedOpen]);
+
+  // Apply a speed: change playback now and persist it as this channel's override
+  // (null clears the override, falling back to the global default).
+  const changeSpeed = (v: string | null) => {
+    const eff = v ?? settings?.player_speed ?? "1";
+    setSpeed(eff);
+    speedRef.current = eff;
+    try { playerRef.current?.setPlaybackRate(Number(eff)); } catch {}
+    setSpeedOpen(false);
+    if (video) {
+      api.setChannelSpeed(video.channel_id, v).catch(() => {});
+      setVideo((prev) => (prev ? { ...prev, channel_playback_speed: v } : prev));
+    }
+  };
 
   useEffect(() => {
     if (!playlistOpen) return;
@@ -632,6 +682,32 @@ export default function WatchPage() {
             >
               <Clapperboard size={15} /> {t("cinema")}
             </button>
+            <div className="dropdown" ref={speedMenuRef}>
+              <button
+                className={`btn${speed !== "1" ? " active" : ""}`}
+                onClick={() => setSpeedOpen((o) => !o)}
+                title={t("playbackSpeed")}
+              >
+                <Gauge size={15} /> {speed}×
+              </button>
+              {speedOpen && (
+                <div className="dropdown-menu speed-menu">
+                  {PLAYBACK_SPEEDS.map((s) => (
+                    <button
+                      key={s}
+                      className={speed === s ? "is-selected" : undefined}
+                      onClick={() => changeSpeed(s)}
+                    >
+                      {s === "1" ? "1×" : `${s}×`}
+                      {speed === s && <span className="dropdown-menu-status"><Check size={14} /></span>}
+                    </button>
+                  ))}
+                  {video?.channel_playback_speed != null && (
+                    <button onClick={() => changeSpeed(null)}>{t("speedDefault")}</button>
+                  )}
+                </div>
+              )}
+            </div>
             <div className="dropdown" ref={menuRef}>
               <button className="btn" onClick={() => setMenuOpen((o) => !o)}>
                 <Clock /> {t("watchLater")}

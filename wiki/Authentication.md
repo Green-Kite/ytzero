@@ -1,6 +1,6 @@
 By default YT Zero uses **no authentication** — it assumes a trusted local network, and [profiles](Profiles) are just named views. If you expose the app beyond your LAN, or want each member of the household to sign in, the **primary profile** can switch the login method under **Settings → Authentication**.
 
-> The **Authentication** tab is only visible to the primary profile (the first profile created). See [Profiles](Profiles) for what "primary" means.
+> The **Authentication** tab (and the other admin-only settings) is visible to **admins**: the primary profile (the first profile created), or — with OIDC — any signed-in identity whose groups claim contains the configured admin group. See [Profiles](Profiles) for what "primary" means and [OIDC → Group-based admin](#group-based-admin) below.
 
 ## Methods at a glance
 
@@ -23,6 +23,8 @@ The Authentication tab is a three-step wizard:
 3. **Activate** — apply the method. The app reloads and the new login takes effect immediately.
 
 The wizard refuses to activate a method until its prerequisites are met (for example, a shared password or passkey must exist before activating **Shared**), so you cannot accidentally lock yourself out in one click. If you still do, see [Recovery](#recovery-anti-lockout).
+
+> **Exactly one method is active at a time, and there is no fallback between methods.** Whatever you activate is the *only* way in — if it stops working (OIDC provider unreachable, proxy header no longer arriving, forgotten shared/per-profile credentials, a lost passkey), the app does **not** silently fall back to **None** or to any previously configured method. You are locked out until you recover. The only way back in is the environment-variable escape hatch below: set it, restart, fix the configuration in **Settings → Authentication**, then remove it and restart. Plan for this before exposing the app publicly.
 
 ---
 
@@ -79,6 +81,15 @@ Sign in through an external OpenID Connect provider such as **Pocket ID**, **Aut
 
 Set an optional **Logout URL** to send users to your provider's logout endpoint when they sign out.
 
+### Group-based admin
+
+By default only the **primary profile** has admin powers (the Authentication tab, global settings, and profile/channel management). With OIDC you can additionally grant those powers to identities based on a group claim from your provider:
+
+- **Groups claim** — the claim in the ID token / userinfo that lists the user's groups (default `groups`).
+- **Admin group** — the group name that grants admin. Leave it **empty to disable** group-based admin entirely (primary-only). When set, any signed-in identity whose groups claim contains this value gets **primary-equivalent** powers.
+
+This works in both mapping modes. It is convenient for delegating administration without sharing the primary profile, but it also means your IdP's group membership now controls who can change the login configuration — treat the admin group as sensitive. The primary profile always keeps admin powers regardless of groups, so local recovery still works.
+
 ### Troubleshooting
 
 - **`unsupported operation` in the logs after a successful token exchange** — the provider signed the ID token with **HS256** (HMAC), which isn't accepted. In **Authentik** this happens when the provider has **no Signing Key** selected; set it to an RSA/EC certificate (e.g. "authentik Self-signed Certificate") so the ID token uses RS256.
@@ -116,12 +127,21 @@ Passkeys (WebAuthn) are supported for the **Shared** and **Login per profile** m
 
 ## Recovery (anti-lockout)
 
-If a misconfiguration locks you out (for example an OIDC provider that stops responding, or a proxy header that no longer arrives), set the environment variable and restart:
+Because there is **no fallback between methods** (see the note above), a broken or forgotten login means you are locked out — the app will not revert to **None** on its own. The single recovery path is the `YTZERO_AUTH_DISABLE` environment variable, which requires access to the deployment (Docker Compose file, systemd unit, shell, etc.).
 
-```text
-YTZERO_AUTH_DISABLE=1
-```
+Step by step:
 
-This forces the **None** method regardless of the saved setting. Sign in to the primary profile, fix the configuration on the **Authentication** tab, then remove the variable and restart.
+1. **Set the variable** in the environment and **restart** the container/process:
+
+   ```text
+   YTZERO_AUTH_DISABLE=1
+   ```
+
+   This forces the **None** method for as long as the variable is set, regardless of the saved setting. Nothing in the database is changed — the saved method is only overridden at runtime.
+2. **Sign in** as the primary profile (or any profile — None has no login) and open **Settings → Authentication**.
+3. **Correct the configuration** — fix the OIDC issuer, re-enter credentials, adjust the proxy header, re-add a passkey, or switch to a different method. Save/Activate as needed.
+4. **Remove** `YTZERO_AUTH_DISABLE` (or set it to anything other than `1`) and **restart** again so the saved method takes effect.
+
+> Keep the ability to edit environment variables and restart the deployment available to whoever administers YT Zero — it is the only way back in. If you run behind a reverse proxy that itself enforces auth, make sure that layer can't also permanently block the recovery login.
 
 See [`YTZERO_AUTH_DISABLE`](Configuration) in the configuration reference.

@@ -704,6 +704,10 @@ api.get("/videos/:id", (c) => {
     ).all(...seen, need() * 2) as VideoRow[]);
   }
 
+  // Active profile's per-channel playback speed override (NULL = use global).
+  const speedRow = db.prepare("SELECT playback_speed FROM user_channels WHERE user_id = ? AND channel_id = ?").get(uid, row.channel_id) as { playback_speed: string | null } | null;
+  (video as any).channel_playback_speed = speedRow?.playback_speed ?? null;
+
   return c.json({ video, related: attachTags(uid, related) });
 });
 
@@ -1082,6 +1086,19 @@ api.put("/channels/:id/follow", async (c) => {
   return c.json({ ok: true });
 });
 
+// Per-channel playback speed override for the active profile. Empty/"default"
+// clears it (stored as NULL) so the video falls back to the global player_speed.
+api.put("/channels/:id/speed", async (c) => {
+  const uid = currentUserId(c);
+  const { speed } = await c.req.json<{ speed: string | null }>();
+  const value = !speed || speed === "default" ? null : speed;
+  db.prepare(
+    `INSERT INTO user_channels (user_id, channel_id, playback_speed) VALUES (?, ?, ?)
+     ON CONFLICT(user_id, channel_id) DO UPDATE SET playback_speed = excluded.playback_speed`
+  ).run(uid, c.req.param("id"), value);
+  return c.json({ ok: true });
+});
+
 // Literal paths before parameterised /channels/:id to avoid shadowing
 api.get("/channels/unfollowed", (c) => {
   const uid = currentUserId(c);
@@ -1143,8 +1160,8 @@ api.get("/channels/:id", (c) => {
     )
     .all(uid, c.req.param("id")) as any[];
   // followed reflects the active profile (null row = not subscribed).
-  const sub = db.prepare("SELECT followed FROM user_channels WHERE user_id = ? AND channel_id = ?").get(uid, c.req.param("id")) as { followed: number } | null;
-  return c.json({ channel: { ...ch, followed: sub ? sub.followed : 0, tags } });
+  const sub = db.prepare("SELECT followed, playback_speed FROM user_channels WHERE user_id = ? AND channel_id = ?").get(uid, c.req.param("id")) as { followed: number; playback_speed: string | null } | null;
+  return c.json({ channel: { ...ch, followed: sub ? sub.followed : 0, playback_speed: sub?.playback_speed ?? null, tags } });
 });
 
 api.post("/channels/:id/sync", async (c) => {

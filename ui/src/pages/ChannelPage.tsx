@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Check, ExternalLink, ListVideo, Plus, RefreshCw, UserMinus, UserPlus, Video as VideoIcon, Zap } from "lucide-react";
-import { api, type ChannelAbout, type PlaylistInfo, type Tag, type Video } from "../api";
+import { Check, ExternalLink, Gauge, ListVideo, Plus, RefreshCw, UserMinus, UserPlus, Video as VideoIcon, Zap } from "lucide-react";
+import { api, type ChannelAbout, type PlaylistInfo, type Tag, type Video, PLAYBACK_SPEEDS } from "../api";
 import TagChip from "../components/TagChip";
 import Tooltip from "../components/Tooltip";
 import VideoCard from "../components/VideoCard";
@@ -36,6 +36,8 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const [descOpen, setDescOpen] = useState(false);
   const [followed, setFollowed] = useState(true);
   const [unfollowPending, setUnfollowPending] = useState(false);
+  const [channelSpeed, setChannelSpeed] = useState("");
+  const [speedOpen, setSpeedOpen] = useState(false);
   const [channelTags, setChannelTags] = useState<Tag[]>([]);
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [tagMenuOpen, setTagMenuOpen] = useState(false);
@@ -47,6 +49,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const tagMenuRef = useRef<HTMLDivElement>(null);
+  const speedMenuRef = useRef<HTMLDivElement>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const prevIdRef = useRef<string | undefined>(undefined);
 
@@ -66,11 +69,13 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     }
     prevIdRef.current = id;
     setFollowed(true);
+    setChannelSpeed("");
     window.scrollTo(0, 0);
     api.channelAbout(id).then((about) => { setAbout(about); emit("channels-changed"); }).catch(console.error);
     api.channel(id).then((r) => {
       setChannelTags(r.channel.tags);
       setFollowed(r.channel.followed !== 0);
+      setChannelSpeed(r.channel.playback_speed ?? "");
     }).catch(console.error);
     api
       .feed({ channel: id, status: "all", shorts: true, page: 0 })
@@ -117,6 +122,22 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [tagMenuOpen]);
+
+  useEffect(() => {
+    if (!speedOpen) return;
+    const close = (e: MouseEvent) => {
+      if (!speedMenuRef.current?.contains(e.target as Node)) setSpeedOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [speedOpen]);
+
+  // Set (or clear, with null) this channel's playback-speed override.
+  const changeSpeed = (v: string | null) => {
+    setChannelSpeed(v ?? "");
+    setSpeedOpen(false);
+    if (id) api.setChannelSpeed(id, v).catch(console.error);
+  };
 
   const reload = () => {
     if (!id) return;
@@ -288,6 +309,36 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
             {followed ? <UserMinus size={15} /> : <UserPlus size={15} />}
             {followed ? t("unfollow") : t("follow")}
           </button>
+          <div className="dropdown" ref={speedMenuRef}>
+            <button
+              className={`btn${channelSpeed ? " active" : ""}`}
+              onClick={() => setSpeedOpen((o) => !o)}
+              title={t("playbackSpeed")}
+            >
+              <Gauge size={15} /> {channelSpeed ? `${channelSpeed}×` : t("speedDefault")}
+            </button>
+            {speedOpen && (
+              <div className="dropdown-menu speed-menu">
+                {PLAYBACK_SPEEDS.map((s) => (
+                  <button
+                    key={s}
+                    className={channelSpeed === s ? "is-selected" : undefined}
+                    onClick={() => changeSpeed(s)}
+                  >
+                    {s === "1" ? "1×" : `${s}×`}
+                    {channelSpeed === s && <span className="dropdown-menu-status"><Check size={14} /></span>}
+                  </button>
+                ))}
+                <button
+                  className={!channelSpeed ? "is-selected" : undefined}
+                  onClick={() => changeSpeed(null)}
+                >
+                  {t("speedDefault")}
+                  {!channelSpeed && <span className="dropdown-menu-status"><Check size={14} /></span>}
+                </button>
+              </div>
+            )}
+          </div>
           <a className="btn" href={`https://www.youtube.com/channel/${id}`} target="_blank" rel="noreferrer">
             <ExternalLink /> YouTube
           </a>

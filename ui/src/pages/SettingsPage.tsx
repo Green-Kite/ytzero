@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Camera, Check, ChevronDown, ChevronUp, Clock, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, KeyRound, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plus, RefreshCw, ShieldCheck, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
-import { api, type AppLogs, type Channel, type ChildLockStatus, type FilterRule, type Profile, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES } from "../api";
+import { api, type AppLogs, type Channel, type ChildLockStatus, type FilterRule, type Profile, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import { ProfileAvatar } from "../components/ProfileMenu";
 import AuthSettings from "../components/AuthSettings";
 import { NAV_ITEMS, normalizeNav, parseNavConfig, type NavConfigEntry } from "../nav";
@@ -872,6 +872,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [playerHl, setPlayerHl] = useState("pl");
   const [playerCc, setPlayerCc] = useState(false);
   const [playerQuality, setPlayerQuality] = useState("auto");
+  const [playerSpeed, setPlayerSpeed] = useState("1");
   const [sbEnabled, setSbEnabled] = useState(false);
   const [sbCategories, setSbCategories] = useState<string[]>(["sponsor"]);
   const [childLock, setChildLock] = useState<ChildLockStatus>({ enabled: false, locked: false });
@@ -992,6 +993,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         setPlayerHl(r.settings.player_hl);
         setPlayerCc(r.settings.player_cc === "1");
         setPlayerQuality(r.settings.player_quality);
+        setPlayerSpeed(r.settings.player_speed ?? "1");
         setSbEnabled(r.settings.sponsorblock_enabled === "1");
         try { setSbCategories(JSON.parse(r.settings.sponsorblock_categories || '["sponsor"]')); } catch {}
         setChildLock(cl.child_lock);
@@ -1845,7 +1847,10 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
           </div>
 
           <div className="settings-select-row">
-            <label className="switch-label" htmlFor="player-quality">{t("quality")}</label>
+            <div>
+              <label className="switch-label" htmlFor="player-quality">{t("quality")}</label>
+              <div className="switch-sub">{t("qualityHint")}</div>
+            </div>
             <select
               id="player-quality"
               className="select"
@@ -1864,9 +1869,26 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
               <option value="medium">360p</option>
             </select>
           </div>
-          <p className="hint" style={{ marginTop: 4 }}>
-            {t("qualityHint")}
-          </p>
+
+          <div className="settings-select-row">
+            <div>
+              <label className="switch-label" htmlFor="player-speed">{t("playbackSpeed")}</label>
+              <div className="switch-sub">{t("playbackSpeedHint")}</div>
+            </div>
+            <select
+              id="player-speed"
+              className="select"
+              value={playerSpeed}
+              onChange={(e) => {
+                setPlayerSpeed(e.target.value);
+                savePlayer({ player_speed: e.target.value });
+              }}
+            >
+              {PLAYBACK_SPEEDS.map((s) => (
+                <option key={s} value={s}>{`${s}×`}</option>
+              ))}
+            </select>
+          </div>
 
           <hr className="section-divider" />
 
@@ -1911,7 +1933,9 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
               <div className="switch-label">{t("sidebarOrderTitle")}</div>
               <div className="switch-sub">{t("sidebarOrderHint")}</div>
             </div>
-            <button className="btn" onClick={resetNavConfig}>{t("resetOrder")}</button>
+            <Popconfirm message={t("resetOrderConfirm")} onConfirm={resetNavConfig}>
+              <button className="btn">{t("resetOrder")}</button>
+            </Popconfirm>
           </div>
           <SidebarNavEditor value={navConfig} onChange={persistNavConfig} />
         </section>

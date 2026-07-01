@@ -1353,6 +1353,7 @@ button.video-card:disabled { cursor: default; }
   min-width: 162px;
   padding: 7px;
 }
+.speed-menu { min-width: 132px; }
 .dropdown-menu-group + .dropdown-menu-group {
   margin-top: 6px;
 }
@@ -2751,8 +2752,10 @@ a.playlist-item { text-decoration: none; }
   gap: 16px;
   padding: 6px 0;
 }
-.switch-row .switch-label { font-size: 13.5px; }
-.switch-row .switch-sub { color: var(--text-2); font-size: 12px; margin-top: 2px; }
+.switch-row .switch-label,
+.settings-select-row .switch-label { font-size: 13.5px; }
+.switch-row .switch-sub,
+.settings-select-row .switch-sub { color: var(--text-2); font-size: 12px; margin-top: 2px; line-height: 1.5; }
 .settings-select-row {
   display: flex;
   align-items: center;

@@ -1,5 +1,8 @@
 import type { I18nKey } from "./i18n";
 
+// YouTube-supported playback rates, shared by the settings, watch and channel UIs.
+export const PLAYBACK_SPEEDS = ["0.25", "0.5", "0.75", "1", "1.25", "1.5", "1.75", "2"] as const;
+
 export interface Tag {
   id: number;
   name: string;
@@ -27,6 +30,7 @@ export interface Video {
   duration: string | null;
   watch_position: number | null;
   watch_duration: number | null;
+  channel_playback_speed?: string | null;
   in_history: number;
   external?: number;
   liked: number | null;
@@ -45,6 +49,7 @@ export interface Channel {
   thumbnail: string;
   subscriber_count?: string | null;
   followed?: number;
+  playback_speed?: string | null;
   tags: Tag[];
 }
 
@@ -129,6 +134,7 @@ export interface AppSettings {
   player_cc: string;
   player_cc_lang: string;
   player_quality: string;
+  player_speed: string;
   grid_size: string;
   child_lock_enabled: string;
   app_name: string;
@@ -387,6 +393,8 @@ export const api = {
 
   followChannel: (id: string, followed: boolean) =>
     http(`/channels/${id}/follow`, { method: "PUT", body: JSON.stringify({ followed }) }),
+  setChannelSpeed: (id: string, speed: string | null) =>
+    http(`/channels/${id}/speed`, { method: "PUT", body: JSON.stringify({ speed }) }),
   unfollowedChannels: () => http<{ channels: Channel[] }>("/channels/unfollowed"),
 
   channelAbout: (id: string) => http<ChannelAbout>(`/channels/${id}/about`),

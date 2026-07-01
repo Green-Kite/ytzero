@@ -224,6 +224,8 @@ for (const col of ["is_short INTEGER", "views INTEGER", "likes INTEGER"]) {
 }
 // followed: 1 = subscribed (default), 0 = unfollowed (hidden from feed)
 try { db.exec("ALTER TABLE channels ADD COLUMN followed INTEGER NOT NULL DEFAULT 1"); } catch {}
+// Per-profile per-channel playback speed override (NULL = inherit player_speed).
+try { db.exec("ALTER TABLE user_channels ADD COLUMN playback_speed TEXT"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN duration TEXT"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN watch_position REAL"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN watch_duration REAL"); } catch {}
@@ -254,6 +256,7 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   player_cc: "0",
   player_cc_lang: "en",
   player_quality: "auto",
+  player_speed: "1",
   grid_size: "sm",
   child_lock_enabled: "0",
   child_lock_pin_hash: "",

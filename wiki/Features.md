@@ -35,7 +35,8 @@ The app is designed around a few primary workflows:
 - **Channel pages** — browse regular videos, Shorts, public playlists, channel metadata, and channel-specific tags.
 - **Theater view** — distraction-light player layout for watching.
 - **Internationalization** — English, Polish, and German UI, with saved user preference.
-- **Player preferences** — captions, player language, caption language, preferred quality, and Shorts visibility.
+- **Player preferences** — captions, player language, caption language, preferred quality, default playback speed, and Shorts visibility.
+- **Playback speed** — set a default speed that is applied to every video on load (instead of resetting to 1× each time), with an optional per-channel override. The default lives under **Settings → Player**; the per-channel override can be set from either the channel page or the speed control in the player, and both places stay in sync (changing the speed in the player saves it as that channel's default). The override wins over the global default; clearing it falls back to the global default. The default is stored per profile and does not apply to the Shorts player.
 - **Custom display** — rename the app, change grid density, show or hide top channels, and reorder or hide sidebar items.
 - **Shorts tab** — dedicated Shorts view that shows only Shorts from channels you follow, filterable by tag. Watched Shorts are marked in the grid.
 - **Shorts player** — a full-screen vertical player for browsing Shorts one at a time. Navigate with on-screen arrows, keyboard arrows, or swipe; Space pauses and resumes. The next and previous Shorts are preloaded for instant playback.
